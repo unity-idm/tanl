@@ -333,7 +333,34 @@ milliseconds. The default 3600 therefore means one hour, still capped by HTTP
 and OCSP response expiry. Persistent disk caching remains on the compatibility
 path for its dedicated migration layer. Nonce, multiple/responder ordering,
 OCSPCheckingMode.IF_AVAILABLE, and CRL/OCSP combinations remain unchanged on
-compatibility code.
+compatibility code. Persistent caching is added by the following migration
+layer.
+
+
+NATIVE OCSP PERSISTENT RESPONSE CACHE
+
+A configured OCSPParametes disk cache path now extends the native encoded-
+response cache across validator instances and process restarts. The native
+cache directory is created when necessary. Stable SHA-256 filenames bind each
+entry to its responder URI, certificate, issuer, and explicit responder
+certificate. Existing serialized ocspresp_ files are ignored; native entries
+use a versioned ocspresp-v1-*.cache format with no Java deserialization.
+
+Persistent entries retain their original fetch time and response-expiry limit,
+so configured TTL, HTTP max-age, and OCSP nextUpdate are enforced after a
+restart. Files have strict headers, lengths, and a 64 KiB bound. Writes use a
+same-directory temporary file and atomic replacement when supported.
+Malformed, truncated, oversized, future-dated, expired, unreadable, or
+otherwise corrupt entries are removed and treated as cache misses. A cache
+read or write failure never creates a valid result by itself.
+
+Every loaded response is passed to a fresh PKIXRevocationChecker before use.
+If native validation rejects it, the memory and disk entries are deleted and
+one response is fetched and checked normally. Only newly fetched responses
+accepted by native BC are persisted. A negative cache TTL still disables both
+memory and disk caching even when a disk path is configured. Nonce, multiple
+responders and ordering, OCSPCheckingMode.IF_AVAILABLE, CRL/OCSP combinations,
+and OCSP update notifications remain separate migration layers.
 
 
 2.x HISTORICAL CHANGES

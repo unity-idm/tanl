@@ -4,11 +4,15 @@
  */
 package eu.emi.security.authn.x509.helpers.pkipath;
 
+import java.io.File;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
 import java.security.InvalidAlgorithmParameterException;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.security.SignatureException;
 import java.security.cert.CertPath;
 import java.security.cert.CertPathBuilder;
@@ -19,6 +23,7 @@ import java.security.cert.CertPathValidatorException.BasicReason;
 import java.security.cert.CertStore;
 import java.security.cert.Certificate;
 import java.security.cert.CertificateException;
+import java.security.cert.CertificateEncodingException;
 import java.security.cert.CertificateExpiredException;
 import java.security.cert.CertificateFactory;
 import java.security.cert.CertificateNotYetValidException;
@@ -144,6 +149,19 @@ final class NativeBCPKIXValidator
 			Set<TrustAnchor> configuredAnchors, OCSPResponder responder,
 			int timeout, int cacheTtl) throws CertificateException
 	{
+		return validateWithOCSP(input, configuredAnchors, responder, timeout,
+				cacheTtl, null);
+	}
+
+	/**
+	 * Builds and validates a path using configured transport controls and
+	 * optional memory and persistent raw-response caching.
+	 */
+	ValidationResult validateWithOCSP(X509Certificate[] input,
+			Set<TrustAnchor> configuredAnchors, OCSPResponder responder,
+			int timeout, int cacheTtl, String diskCachePath)
+			throws CertificateException
+	{
 		if (timeout < 0)
 			return invalidInput(input, -1, "OCSP timeout must not be negative");
 		if (responder == null)
@@ -156,7 +174,7 @@ final class NativeBCPKIXValidator
 		{
 			return validate(input, configuredAnchors, null,
 					responder.getAddress().toURI(), responder.getCertificate(), false,
-					new OCSPFetchPolicy(timeout, cacheTtl));
+					new OCSPFetchPolicy(timeout, cacheTtl, diskCachePath));
 		} catch (URISyntaxException e)
 		{
 			return invalid(input, -1, ValidationErrorCode.INVALID_INPUT,
@@ -192,10 +210,22 @@ final class NativeBCPKIXValidator
 			Set<TrustAnchor> configuredAnchors, int timeout, int cacheTtl)
 			throws CertificateException
 	{
+		return validateWithOCSPFromAIA(input, configuredAnchors, timeout,
+				cacheTtl, null);
+	}
+
+	/**
+	 * Builds and validates a path using discovered responders and optional
+	 * memory and persistent raw-response caching.
+	 */
+	ValidationResult validateWithOCSPFromAIA(X509Certificate[] input,
+			Set<TrustAnchor> configuredAnchors, int timeout, int cacheTtl,
+			String diskCachePath) throws CertificateException
+	{
 		if (timeout < 0)
 			return invalidInput(input, -1, "OCSP timeout must not be negative");
 		return validate(input, configuredAnchors, null, null, null, true,
-				new OCSPFetchPolicy(timeout, cacheTtl));
+				new OCSPFetchPolicy(timeout, cacheTtl, diskCachePath));
 	}
 
 	private ValidationResult validate(X509Certificate[] input,
@@ -318,6 +348,19 @@ final class NativeBCPKIXValidator
 			Set<TrustAnchor> configuredAnchors, OCSPResponder responder,
 			int timeout, int cacheTtl) throws CertificateException
 	{
+		return validateWithOCSP(suppliedPath, configuredAnchors, responder,
+				timeout, cacheTtl, null);
+	}
+
+	/**
+	 * Validates an asserted path using configured transport controls and
+	 * optional memory and persistent raw-response caching.
+	 */
+	ValidationResult validateWithOCSP(CertPath suppliedPath,
+			Set<TrustAnchor> configuredAnchors, OCSPResponder responder,
+			int timeout, int cacheTtl, String diskCachePath)
+			throws CertificateException
+	{
 		if (timeout < 0)
 			return invalidInput(null, -1, "OCSP timeout must not be negative");
 		if (responder == null)
@@ -330,7 +373,7 @@ final class NativeBCPKIXValidator
 		{
 			return validate(suppliedPath, configuredAnchors, null,
 					responder.getAddress().toURI(), responder.getCertificate(), false,
-					new OCSPFetchPolicy(timeout, cacheTtl));
+					new OCSPFetchPolicy(timeout, cacheTtl, diskCachePath));
 		} catch (URISyntaxException e)
 		{
 			return invalid(null, -1, ValidationErrorCode.INVALID_INPUT,
@@ -366,10 +409,22 @@ final class NativeBCPKIXValidator
 			Set<TrustAnchor> configuredAnchors, int timeout, int cacheTtl)
 			throws CertificateException
 	{
+		return validateWithOCSPFromAIA(suppliedPath, configuredAnchors, timeout,
+				cacheTtl, null);
+	}
+
+	/**
+	 * Validates an asserted path using discovered responders and optional
+	 * memory and persistent raw-response caching.
+	 */
+	ValidationResult validateWithOCSPFromAIA(CertPath suppliedPath,
+			Set<TrustAnchor> configuredAnchors, int timeout, int cacheTtl,
+			String diskCachePath) throws CertificateException
+	{
 		if (timeout < 0)
 			return invalidInput(null, -1, "OCSP timeout must not be negative");
 		return validate(suppliedPath, configuredAnchors, null, null, null, true,
-				new OCSPFetchPolicy(timeout, cacheTtl));
+				new OCSPFetchPolicy(timeout, cacheTtl, diskCachePath));
 	}
 
 	private ValidationResult validate(CertPath suppliedPath,
@@ -663,7 +718,8 @@ final class NativeBCPKIXValidator
 				new TrustAnchor(issuer, null));
 		OCSPCacheKey cacheKey = new OCSPCacheKey(responder, certificate, issuer,
 				responderCertificate);
-		byte[] cachedResponse = ocspResponseCache.get(cacheKey, fetchPolicy.cacheTtl);
+		byte[] cachedResponse = ocspResponseCache.get(cacheKey, fetchPolicy.cacheTtl,
+				fetchPolicy.diskCache, cacheKey.diskKey);
 		if (cachedResponse != null)
 		{
 			try
@@ -673,14 +729,16 @@ final class NativeBCPKIXValidator
 				return null;
 			} catch (CertPathValidatorException e)
 			{
-				ocspResponseCache.remove(cacheKey);
+				ocspResponseCache.remove(cacheKey, fetchPolicy.diskCache,
+						cacheKey.diskKey);
 			} catch (InvalidAlgorithmParameterException e)
 			{
 				throw new IllegalStateException(
 						"Native BC PKIX validator rejected cached OCSP parameters", e);
 			} catch (RuntimeException e)
 			{
-				ocspResponseCache.remove(cacheKey);
+				ocspResponseCache.remove(cacheKey, fetchPolicy.diskCache,
+						cacheKey.diskKey);
 			}
 		}
 		try
@@ -693,7 +751,7 @@ final class NativeBCPKIXValidator
 			validateNativeWithOCSPResponse(edgePath, edgeAnchor, certificateStore,
 					certificate, response, responderCertificate);
 			ocspResponseCache.put(cacheKey, response, responseExpiry(fetched),
-					fetchPolicy.cacheTtl);
+					fetchPolicy.cacheTtl, fetchPolicy.diskCache, cacheKey.diskKey);
 			return null;
 		} catch (CertPathValidatorException e)
 		{
@@ -752,11 +810,14 @@ final class NativeBCPKIXValidator
 	{
 		private final int timeout;
 		private final int cacheTtl;
+		private final File diskCache;
 
-		private OCSPFetchPolicy(int timeout, int cacheTtl)
+		private OCSPFetchPolicy(int timeout, int cacheTtl, String diskCachePath)
 		{
 			this.timeout = timeout;
 			this.cacheTtl = cacheTtl;
+			this.diskCache = diskCachePath == null || diskCachePath.trim().isEmpty() ?
+					null : new File(diskCachePath);
 		}
 	}
 
@@ -766,6 +827,7 @@ final class NativeBCPKIXValidator
 		private final X509Certificate certificate;
 		private final X509Certificate issuer;
 		private final X509Certificate responderCertificate;
+		private final String diskKey;
 
 		private OCSPCacheKey(URI responder, X509Certificate certificate,
 				X509Certificate issuer, X509Certificate responderCertificate)
@@ -774,6 +836,7 @@ final class NativeBCPKIXValidator
 			this.certificate = certificate;
 			this.issuer = issuer;
 			this.responderCertificate = responderCertificate;
+			this.diskKey = createDiskKey();
 		}
 
 		@Override
@@ -794,6 +857,51 @@ final class NativeBCPKIXValidator
 		public int hashCode()
 		{
 			return Objects.hash(responder, certificate, issuer, responderCertificate);
+		}
+
+		private String createDiskKey()
+		{
+			try
+			{
+				MessageDigest digest = MessageDigest.getInstance("SHA-256");
+				updateDigest(digest, responder.toASCIIString().getBytes(
+						StandardCharsets.UTF_8));
+				updateDigest(digest, certificate.getEncoded());
+				updateDigest(digest, issuer.getEncoded());
+				updateDigest(digest, responderCertificate == null ? null :
+						responderCertificate.getEncoded());
+				return toHex(digest.digest());
+			} catch (NoSuchAlgorithmException e)
+			{
+				throw new IllegalStateException("SHA-256 digest is unavailable", e);
+			} catch (CertificateEncodingException e)
+			{
+				return null;
+			}
+		}
+
+		private void updateDigest(MessageDigest digest, byte[] value)
+		{
+			int length = value == null ? -1 : value.length;
+			digest.update((byte) (length >>> 24));
+			digest.update((byte) (length >>> 16));
+			digest.update((byte) (length >>> 8));
+			digest.update((byte) length);
+			if (value != null)
+				digest.update(value);
+		}
+
+		private String toHex(byte[] value)
+		{
+			char[] result = new char[value.length * 2];
+			char[] digits = "0123456789abcdef".toCharArray();
+			for (int i=0; i<value.length; i++)
+			{
+				int unsigned = value[i] & 0xff;
+				result[i*2] = digits[unsigned >>> 4];
+				result[i*2+1] = digits[unsigned & 0x0f];
+			}
+			return new String(result);
 		}
 	}
 

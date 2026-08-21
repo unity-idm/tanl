@@ -12,10 +12,13 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
+import java.io.File;
 import java.math.BigInteger;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.net.SocketTimeoutException;
+import java.nio.file.Files;
+import java.nio.file.StandardOpenOption;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.PrivateKey;
@@ -61,7 +64,9 @@ import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
 import org.bouncycastle.operator.jcajce.JcaDigestCalculatorProviderBuilder;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.TemporaryFolder;
 
 import com.sun.net.httpserver.HttpServer;
 
@@ -83,6 +88,9 @@ public class NativeBCPKIXOCSPTest
 	private X509Certificate target;
 	private Set<TrustAnchor> anchors;
 	private HttpServer responderServer;
+
+	@Rule
+	public TemporaryFolder temporary = new TemporaryFolder();
 
 	@Before
 	public void setUp() throws Exception
@@ -199,6 +207,58 @@ public class NativeBCPKIXOCSPTest
 		assertTrue(first.toString(), first.isValid());
 		assertTrue(second.toString(), second.isValid());
 		assertThat(queries.get(), is(2));
+	}
+
+	@Test
+	public void shouldLoadPersistentResponseInANewValidator() throws Exception
+	{
+		File diskCache = temporary.newFolder("native-ocsp-cache");
+		responderServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+		AtomicInteger queries = new AtomicInteger();
+		addResponse("/", response(null, rootKeyPair.getPrivate(),
+				new Date(System.currentTimeMillis() + 10 * MINUTE)), queries);
+		responderServer.start();
+		OCSPResponder responder = new OCSPResponder(responderURI("/").toURL(), root);
+
+		ValidationResult first = validator.validateWithOCSP(
+				new X509Certificate[] {target, root}, anchors, responder, 1000, 60,
+				diskCache.getAbsolutePath());
+		responderServer.stop(0);
+		responderServer = null;
+		ValidationResult reloaded = new NativeBCPKIXValidator().validateWithOCSP(
+				path(target, root), anchors, responder, 1000, 60,
+				diskCache.getAbsolutePath());
+
+		assertTrue(first.toString(), first.isValid());
+		assertTrue(reloaded.toString(), reloaded.isValid());
+		assertThat(queries.get(), is(1));
+		assertThat(diskCache.listFiles().length, is(1));
+	}
+
+	@Test
+	public void shouldRecoverFromCorruptPersistentResponse() throws Exception
+	{
+		File diskCache = temporary.newFolder("corrupt-native-ocsp-cache");
+		responderServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+		AtomicInteger queries = new AtomicInteger();
+		addResponse("/", response(null, rootKeyPair.getPrivate(),
+				new Date(System.currentTimeMillis() + 10 * MINUTE)), queries);
+		responderServer.start();
+		OCSPResponder responder = new OCSPResponder(responderURI("/").toURL(), root);
+		ValidationResult first = validator.validateWithOCSP(
+				new X509Certificate[] {target, root}, anchors, responder, 1000, 60,
+				diskCache.getAbsolutePath());
+		Files.write(diskCache.listFiles()[0].toPath(), new byte[] {1, 2, 3},
+				StandardOpenOption.TRUNCATE_EXISTING);
+
+		ValidationResult recovered = new NativeBCPKIXValidator().validateWithOCSP(
+				new X509Certificate[] {target, root}, anchors, responder, 1000, 60,
+				diskCache.getAbsolutePath());
+
+		assertTrue(first.toString(), first.isValid());
+		assertTrue(recovered.toString(), recovered.isValid());
+		assertThat(queries.get(), is(2));
+		assertThat(diskCache.listFiles().length, is(1));
 	}
 
 	@Test

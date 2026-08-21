@@ -222,7 +222,6 @@ public abstract class AbstractValidator implements X509CertChainValidatorExt
 		OCSPResponder[] responders = parameters.getLocalResponders();
 		if (responders == null || responders.length > 1 ||
 				!parameters.isPreferLocalResponders() || parameters.isUseNonce() ||
-				parameters.getDiskCachePath() != null ||
 				!hasSupportedOCSPTransport(parameters))
 			return false;
 		if (responders.length == 0)
@@ -297,9 +296,10 @@ public abstract class AbstractValidator implements X509CertChainValidatorExt
 	{
 		if (usesDiscoveredOCSPResponders())
 			return nativeValidator.validateWithOCSPFromAIA(certificates, anchors,
-					getOCSPTimeout(), getOCSPCacheTtl());
+					getOCSPTimeout(), getOCSPCacheTtl(), getOCSPDiskCachePath());
 		return nativeValidator.validateWithOCSP(certificates, anchors,
-				getNativeOCSPResponder(), getOCSPTimeout(), getOCSPCacheTtl());
+				getNativeOCSPResponder(), getOCSPTimeout(), getOCSPCacheTtl(),
+				getOCSPDiskCachePath());
 	}
 
 	private ValidationResult validateNativeOCSP(CertPath path,
@@ -307,9 +307,10 @@ public abstract class AbstractValidator implements X509CertChainValidatorExt
 	{
 		if (usesDiscoveredOCSPResponders())
 			return nativeValidator.validateWithOCSPFromAIA(path, anchors,
-					getOCSPTimeout(), getOCSPCacheTtl());
+					getOCSPTimeout(), getOCSPCacheTtl(), getOCSPDiskCachePath());
 		return nativeValidator.validateWithOCSP(path, anchors,
-				getNativeOCSPResponder(), getOCSPTimeout(), getOCSPCacheTtl());
+				getNativeOCSPResponder(), getOCSPTimeout(), getOCSPCacheTtl(),
+				getOCSPDiskCachePath());
 	}
 
 	private int getOCSPTimeout()
@@ -320,6 +321,11 @@ public abstract class AbstractValidator implements X509CertChainValidatorExt
 	private int getOCSPCacheTtl()
 	{
 		return revocationMode.getOcspParameters().getCacheTtl();
+	}
+
+	private String getOCSPDiskCachePath()
+	{
+		return revocationMode.getOcspParameters().getDiskCachePath();
 	}
 
 	private boolean usesDiscoveredOCSPResponders()
