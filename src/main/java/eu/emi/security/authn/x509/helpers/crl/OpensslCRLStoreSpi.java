@@ -21,8 +21,8 @@ import eu.emi.security.authn.x509.impl.CRLParameters;
  *
  * Implementation of the CRL store which uses CRLs from a single directory 
  * in OpenSSL format. Each CRL should be stored in a file named HASH.rNUM,
- * where HASH is an 8 digit hex number, with 8 least significant digits of the MD5
- * hash of the CRL issuer subject in DER format. The NUM must be a number, starting from 0.
+ * where HASH is the modern OpenSSL 8-digit subject hash of the CRL issuer.
+ * The NUM must be a number, starting from 0.
  * <p>
  * This class is extending the {@link PlainCRLStoreSpi} and restricts 
  * the CRLs which are loaded.
@@ -31,15 +31,13 @@ import eu.emi.security.authn.x509.impl.CRLParameters;
 public class OpensslCRLStoreSpi extends PlainCRLStoreSpi
 {
 	public static final String CRL_WILDCARD = "????????.r*";
-	private boolean openssl1Mode;
 	
-	public OpensslCRLStoreSpi(String path, long crlUpdateInterval, Timer t,	ObserversHandler observers,
-			boolean openssl1Mode) throws InvalidAlgorithmParameterException
+	public OpensslCRLStoreSpi(String path, long crlUpdateInterval, Timer t,	ObserversHandler observers)
+			throws InvalidAlgorithmParameterException
 	{
 		super(new CRLParameters(Collections.singletonList(
 				path+File.separator+CRL_WILDCARD),
 				crlUpdateInterval, 0, null), t, observers);
-		this.openssl1Mode = openssl1Mode;
 		super.start();
 	}
 	
@@ -64,7 +62,7 @@ public class OpensslCRLStoreSpi extends PlainCRLStoreSpi
 			return null;
 		}
 		String crlHash = OpensslTruststoreHelper.getOpenSSLCAHash(
-				crl.getIssuerX500Principal(), openssl1Mode);
+				crl.getIssuerX500Principal());
 		if (!fileHash.equalsIgnoreCase(crlHash))
 		{
 			return null;

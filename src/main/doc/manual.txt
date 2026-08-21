@@ -136,17 +136,15 @@ certificates:
 ------------
 /*
  * Validates toBeChecked chain using Openssl style truststore, from
- * the /etc/grid-security/certificates directory. Both kinds of 
- * namespaces are checked and forced if are present. Truststore is 
+ * the /etc/grid-security/certificates directory. Truststore is
  * reread every minute. The additional settings are not defined and
  * so defaults are used: CRLs are forced if are present. No listeners are registered to
- * be notified about trusted CA certificates, CRLs or namespace 
- * definitions reloading.
+ * be notified about trusted CA certificate or CRL reloading.
  */
 X509Certificate[] toBeChecked = null;
 X509CertChainValidator vff = new OpensslCertChainValidator(
 	"/etc/grid-security/certificates", 
-	NamespaceCheckingMode.EUGRIDPMA_AND_GLOBUS, 60000);
+	60000);
 
 ValidationResult result = vff.validate(toBeChecked);
 if (result.isValid()) {

@@ -19,7 +19,6 @@ import static java.time.Duration.of;
 import static java.time.temporal.ChronoUnit.DAYS;
 import static java.time.temporal.ChronoUnit.HOURS;
 import static java.time.temporal.ChronoUnit.MINUTES;
-import static java.util.Arrays.asList;
 import static java.util.Objects.requireNonNull;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.empty;
@@ -27,11 +26,9 @@ import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.nullValue;
-import static org.junit.Assert.assertTrue;
 
 import java.io.File;
 import java.io.IOException;
-import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
@@ -43,19 +40,24 @@ import java.security.KeyPairGenerator;
 import java.security.NoSuchAlgorithmException;
 import java.security.PrivateKey;
 import java.security.PublicKey;
+import java.security.cert.CRL;
 import java.security.cert.CRLException;
 import java.security.cert.CertificateException;
 import java.security.cert.X509CRL;
+import java.security.cert.X509CRLSelector;
 import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ThreadLocalRandom;
-import java.util.stream.Collectors;
 
 import javax.security.auth.x500.X500Principal;
 
@@ -78,11 +80,14 @@ import org.junit.Before;
 import org.junit.Test;
 
 import eu.emi.security.authn.x509.CrlCheckingMode;
-import eu.emi.security.authn.x509.NamespaceCheckingMode;
 import eu.emi.security.authn.x509.OCSPCheckingMode;
 import eu.emi.security.authn.x509.OCSPParametes;
 import eu.emi.security.authn.x509.RevocationParameters;
+import eu.emi.security.authn.x509.StoreUpdateListener;
 import eu.emi.security.authn.x509.ValidationResult;
+import eu.emi.security.authn.x509.helpers.ObserversHandler;
+import eu.emi.security.authn.x509.helpers.crl.LazyOpensslCRLStoreSpi;
+import eu.emi.security.authn.x509.helpers.trust.LazyOpensslTrustAnchorStoreImpl;
 import eu.emi.security.authn.x509.helpers.trust.OpensslTruststoreHelper;
 
 /**
@@ -118,20 +123,18 @@ public class OpensslCertChainValidatorTest
 
 	@Test
 	public void shouldValidateRootIssuedEEC() throws Exception {
+		List<String> loadedTypes = Collections.synchronizedList(new ArrayList<String>());
 		CA rootCA = given(aCertificateAuthority()
 				.selfSigned()
 				.withName("DC=org, DC=example, CN=root CA"));
 
 		given(anOpensslTrustStore()
-				.withNamespacesFiles()
-				.withSigningPolicyFiles()
-				.trustingCA(rootCA)
-				.authorising("/DC=org/DC=example"));
+				.trustingCA(rootCA));
 
 		given(anOpensslCertChainValidator()
 				.with(OCSPCheckingMode.IGNORE)
 				.with(CrlCheckingMode.REQUIRE)
-				.with(NamespaceCheckingMode.EUGRIDPMA_AND_GLOBUS_REQUIRE)
+				.with(recordingListener(loadedTypes))
 				.withUpdateInterval(of(2, MINUTES))
 				.withLazyLoading());
 
@@ -144,6 +147,109 @@ public class OpensslCertChainValidatorTest
 		assertThat(result.isValid(), is(equalTo(true)));
 		assertThat(result.getErrors(), is(empty()));
 		assertThat(result.getUnresolvedCriticalExtensions(), is(empty()));
+		assertThat(loadedTypes.contains(StoreUpdateListener.CA_CERT), is(true));
+		assertThat(loadedTypes.contains(StoreUpdateListener.CRL), is(true));
+	}
+
+	@Test
+	public void shouldValidateRootIssuedEecWithEagerLoading() throws Exception {
+		List<String> loadedTypes = Collections.synchronizedList(new ArrayList<String>());
+		CA rootCA = given(aCertificateAuthority()
+				.selfSigned()
+				.withName("DC=org, DC=example, CN=eager root CA"));
+
+		given(anOpensslTrustStore().trustingCA(rootCA));
+		given(anOpensslCertChainValidator()
+				.with(OCSPCheckingMode.IGNORE)
+				.with(CrlCheckingMode.REQUIRE)
+				.with(recordingListener(loadedTypes))
+				.withUpdateInterval(of(2, MINUTES))
+				.withEagerLoading());
+
+		X509Certificate serviceCertificate = given(anEEC()
+				.withSubject("DC=org, DC=example, CN=eager remote host")
+				.signedBy(rootCA));
+
+		ValidationResult result = whenValidating(serviceCertificate);
+
+		assertThat(result.toString(), result.isValid(), is(true));
+		assertThat(loadedTypes.contains(StoreUpdateListener.CA_CERT), is(true));
+		assertThat(loadedTypes.contains(StoreUpdateListener.CRL), is(true));
+	}
+
+	@Test
+	public void shouldLoadCertificateAndCrlHashCollisionSuffixes() throws Exception {
+		String subject = "DC=org, DC=example, CN=rollover root CA";
+		CA firstRoot = given(aCertificateAuthority().selfSigned().withName(subject));
+		CA secondRoot = given(aCertificateAuthority().selfSigned().withName(subject));
+
+		given(anOpensslTrustStore()
+				.trustingCA(firstRoot)
+				.andTrustingCA(secondRoot));
+
+		String hash = OpensslTruststoreHelper.getOpenSSLCAHash(firstRoot.getSubject());
+		assertThat(Files.exists(trustStore.resolve(hash + ".1")), is(true));
+		assertThat(Files.exists(trustStore.resolve(hash + ".r1")), is(true));
+
+		LazyOpensslTrustAnchorStoreImpl caStore = new LazyOpensslTrustAnchorStoreImpl(
+				trustStore.toString(), -1, new ObserversHandler());
+		assertThat(caStore.getTrustedCertificates().length, is(equalTo(2)));
+
+		LazyOpensslCRLStoreSpi crlStore = new LazyOpensslCRLStoreSpi(
+				trustStore.toString(), -1, new ObserversHandler());
+		try {
+			X509CRLSelector selector = new X509CRLSelector();
+			selector.addIssuer(firstRoot.getSubject());
+			Collection<? extends CRL> crls = crlStore.engineGetCRLs(selector);
+			assertThat(crls.size(), is(equalTo(2)));
+		} finally {
+			crlStore.dispose();
+		}
+	}
+
+	@Test
+	public void shouldRefreshLazyStoreAfterCacheExpiry() throws Exception {
+		CA rootCA = given(aCertificateAuthority()
+				.selfSigned()
+				.withName("DC=org, DC=example, CN=lazy refresh root CA"));
+		X509Certificate serviceCertificate = given(anEEC()
+				.withSubject("DC=org, DC=example, CN=lazy refresh host")
+				.signedBy(rootCA));
+
+		given(anOpensslCertChainValidator()
+				.with(OCSPCheckingMode.IGNORE)
+				.with(CrlCheckingMode.IGNORE)
+				.withUpdateInterval(Duration.ofMillis(25))
+				.withLazyLoading());
+
+		assertThat(whenValidating(serviceCertificate).isValid(), is(false));
+		given(anOpensslTrustStore().trustingCA(rootCA));
+		Thread.sleep(75);
+
+		ValidationResult result = whenValidating(serviceCertificate);
+		assertThat(result.toString(), result.isValid(), is(true));
+	}
+
+	@Test
+	public void shouldRefreshEagerStoreOnSchedule() throws Exception {
+		CA rootCA = given(aCertificateAuthority()
+				.selfSigned()
+				.withName("DC=org, DC=example, CN=eager refresh root CA"));
+		X509Certificate serviceCertificate = given(anEEC()
+				.withSubject("DC=org, DC=example, CN=eager refresh host")
+				.signedBy(rootCA));
+
+		given(anOpensslCertChainValidator()
+				.with(OCSPCheckingMode.IGNORE)
+				.with(CrlCheckingMode.IGNORE)
+				.withUpdateInterval(Duration.ofMillis(25))
+				.withEagerLoading());
+
+		assertThat(whenValidating(serviceCertificate).isValid(), is(false));
+		given(anOpensslTrustStore().trustingCA(rootCA));
+
+		ValidationResult result = waitForValid(serviceCertificate, Duration.ofSeconds(2));
+		assertThat(result.toString(), result.isValid(), is(true));
 	}
 
 	@Test
@@ -156,17 +262,12 @@ public class OpensslCertChainValidatorTest
 				.withName("DC=org, DC=example, CN=intermediate CA 1"));
 
 		given(anOpensslTrustStore()
-				.withNamespacesFiles()
-				.withSigningPolicyFiles()
 				.trustingCA(rootCA)
-				.authorising("/DC=org/DC=example")
-				.andTrustingCA(interCA)
-				.authorising("/DC=org/DC=example"));
+				.andTrustingCA(interCA));
 
 		given(anOpensslCertChainValidator()
 				.with(OCSPCheckingMode.IGNORE)
 				.with(CrlCheckingMode.REQUIRE)
-				.with(NamespaceCheckingMode.EUGRIDPMA_AND_GLOBUS_REQUIRE)
 				.withUpdateInterval(of(2, MINUTES))
 				.withLazyLoading());
 
@@ -194,17 +295,12 @@ public class OpensslCertChainValidatorTest
 				.withName("DC=ch, DC=cern, CN=second intermediate"));
 
 		given(anOpensslTrustStore()
-				.withNamespacesFiles()
-				.withSigningPolicyFiles()
 				.trustingCA(root)
-				.authorising("/DC=org/DC=example")
-				.andTrustingCA(inter1)
-				.authorising("/DC=org/DC=example"));
+				.andTrustingCA(inter1));
 
 		given(anOpensslCertChainValidator()
 				.with(OCSPCheckingMode.IGNORE)
 				.with(CrlCheckingMode.REQUIRE)
-				.with(NamespaceCheckingMode.EUGRIDPMA_AND_GLOBUS_REQUIRE)
 				.withUpdateInterval(of(2, MINUTES))
 				.withLazyLoading());
 
@@ -226,6 +322,32 @@ public class OpensslCertChainValidatorTest
 
 	private ValidationResult whenValidating(X509Certificate... certificates) {
 		return validator.validate(certificates);
+	}
+
+	private ValidationResult waitForValid(X509Certificate certificate, Duration timeout)
+			throws InterruptedException {
+		long deadline = System.currentTimeMillis() + timeout.toMillis();
+		ValidationResult result;
+		do {
+			result = whenValidating(certificate);
+			if (result.isValid()) {
+				return result;
+			}
+			Thread.sleep(25);
+		} while (System.currentTimeMillis() < deadline);
+		return result;
+	}
+
+	private StoreUpdateListener recordingListener(final List<String> loadedTypes) {
+		return new StoreUpdateListener() {
+			@Override
+			public void loadingNotification(String location, String type,
+					Severity level, Exception cause) {
+				if (level == Severity.NOTIFICATION) {
+					loadedTypes.add(type);
+				}
+			}
+		};
 	}
 
 	private OpensslCertChainValidatorBuilder anOpensslCertChainValidator() {
@@ -267,8 +389,8 @@ public class OpensslCertChainValidatorTest
 	private class OpensslCertChainValidatorBuilder {
 		private OCSPCheckingMode ocspMode;
 		private CrlCheckingMode crlCheckingMode;
-		private NamespaceCheckingMode namespaceCheckingMode;
 		private Duration updateInterval;
+		private final List<StoreUpdateListener> listeners = new ArrayList<>();
 		private boolean isLazy;
 
 		public OpensslCertChainValidatorBuilder with(OCSPCheckingMode mode) {
@@ -281,8 +403,8 @@ public class OpensslCertChainValidatorTest
 			return this;
 		}
 
-		public OpensslCertChainValidatorBuilder with(NamespaceCheckingMode mode) {
-			namespaceCheckingMode = requireNonNull(mode);
+		public OpensslCertChainValidatorBuilder with(StoreUpdateListener listener) {
+			listeners.add(requireNonNull(listener));
 			return this;
 		}
 
@@ -296,19 +418,22 @@ public class OpensslCertChainValidatorTest
 			return this;
 		}
 
+		public OpensslCertChainValidatorBuilder withEagerLoading() {
+			this.isLazy = false;
+			return this;
+		}
+
 		public OpensslCertChainValidator build() {
 			assertThat(ocspMode, not(nullValue()));
 			assertThat(crlCheckingMode, not(nullValue()));
-			assertThat(namespaceCheckingMode, not(nullValue()));
 			assertThat(updateInterval, not(nullValue()));
 
 			OCSPParametes ocspParameters = new OCSPParametes(ocspMode);
 			RevocationParameters revocationParams =
 					new RevocationParameters(crlCheckingMode, ocspParameters);
-			ValidatorParams validatorParams = new ValidatorParams(revocationParams);
+			ValidatorParams validatorParams = new ValidatorParams(revocationParams, listeners);
 
-			return new OpensslCertChainValidator(trustStore.toString(), true,
-					namespaceCheckingMode, updateInterval.toMillis(),
+			return new OpensslCertChainValidator(trustStore.toString(), updateInterval.toMillis(),
 					validatorParams, isLazy);
 		}
 	}
@@ -318,33 +443,26 @@ public class OpensslCertChainValidatorTest
 	 */
 	private class OpensslTrustStoreBuilder {
 		private final List<TrustBuilder> trusts = new ArrayList<>();
-		private boolean writeNamespacesFiles;
-		private boolean writeSigningPolicyFiles;
 
 		public OpensslTrustStoreBuilder() throws IOException {
 			Files.createDirectories(trustStore);
 		}
 
-		public OpensslTrustStoreBuilder withNamespacesFiles() {
-			writeNamespacesFiles = true;
-			return this;
-		}
-
-		public OpensslTrustStoreBuilder withSigningPolicyFiles() {
-			writeSigningPolicyFiles = true;
-			return this;
-		}
-
 		public TrustBuilder trustingCA(CA ca) {
-			TrustBuilder trust = new TrustBuilder(ca, writeNamespacesFiles,
-					writeSigningPolicyFiles);
+			TrustBuilder trust = new TrustBuilder(ca);
 			trusts.add(trust);
 			return trust;
 		}
 
 		public void build() throws IOException {
+			Map<String, Integer> nextIndexes = new HashMap<>();
 			for (TrustBuilder tb : trusts) {
-				tb.build();
+				Integer index = nextIndexes.get(tb.hash);
+				if (index == null) {
+					index = 0;
+				}
+				tb.build(index);
+				nextIndexes.put(tb.hash, index + 1);
 			}
 		}
 
@@ -354,16 +472,10 @@ public class OpensslCertChainValidatorTest
 		private class TrustBuilder {
 			private final CA ca;
 			private final String hash;
-			private final List<String> authorisedNames = new ArrayList<>();
-			private final boolean writeNamespacesFiles;
-			private final boolean writeSigningPolicyFiles;
 
-			private TrustBuilder(CA ca, boolean namespaces, boolean signingpolicy) {
+			private TrustBuilder(CA ca) {
 				this.ca = ca;
-				writeNamespacesFiles = namespaces;
-				writeSigningPolicyFiles = signingpolicy;
-
-				hash = OpensslTruststoreHelper.getOpenSSLCAHash(ca.getSubject(), true);
+				hash = OpensslTruststoreHelper.getOpenSSLCAHash(ca.getSubject());
 			}
 
 			private void writeHashFile(String suffix, String contents) throws IOException {
@@ -371,60 +483,17 @@ public class OpensslCertChainValidatorTest
 				Files.write(filePath, contents.getBytes(StandardCharsets.UTF_8));
 			}
 
-			private TrustBuilder authorising(String... distinguishedNames) throws IOException {
-				assertTrue("You need to enable either namespaces, signing_policy (or both) files",
-						writeNamespacesFiles || writeSigningPolicyFiles);
-				authorisedNames.addAll(asList(distinguishedNames));
-				return this;
-			}
-
-			private void writeNamespaces() throws IOException {
-				StringWriter stringWriter = new StringWriter();
-				PrintWriter pw = new PrintWriter(stringWriter);
-				for (String dn : authorisedNames) {
-					pw.println("TO Issuer \"" + ca.getOldDn() + "\" \\");
-					pw.println("  PERMIT Subject \"" + dn + "/.*\"");
-					pw.println();
-				}
-
-				pw.flush();
-				stringWriter.flush();
-
-				writeHashFile(".namespaces", stringWriter.toString());
-			}
-
-			private void writeSigningPolicy() throws IOException {
-				StringWriter stringWriter = new StringWriter();
-				PrintWriter pw = new PrintWriter(stringWriter);
-				pw.println("access_id_CA   X509    '" + ca.getOldDn() + "'");
-				pw.println("pos_rights     globus  CA:sign");
-				pw.println(authorisedNames.stream()
-						.map(dn -> "\"" + dn + "/*\"")
-						.collect(Collectors.joining(" ", "cond_subjects  globus  '", "'")));
-				pw.flush();
-				stringWriter.flush();
-				writeHashFile(".signing_policy", stringWriter.toString());
-			}
-
 			private OpensslTrustStoreBuilder and() {
 				return OpensslTrustStoreBuilder.this;
 			}
 
-			private TrustBuilder andTrustingCA(CA ca) throws IOException {
+			private TrustBuilder andTrustingCA(CA ca) {
 				return and().trustingCA(ca);
 			}
 
-			private void build() throws IOException {
-				writeHashFile(".0", ca.buildPemCertificate());
-				writeHashFile(".r0", ca.buildPemCrl());
-
-				if (writeNamespacesFiles) {
-					writeNamespaces();
-				}
-
-				if (writeSigningPolicyFiles) {
-					writeSigningPolicy();
-				}
+			private void build(int index) throws IOException {
+				writeHashFile("." + index, ca.buildPemCertificate());
+				writeHashFile(".r" + index, ca.buildPemCrl());
 			}
 		}
 	}
@@ -490,10 +559,6 @@ public class OpensslCertChainValidatorTest
 			return X500Name.getInstance(getSubject().getEncoded()).toString();
 		}
 
-		public String getOldDn() {
-			String rfc2253 = getSubject().getName();
-			return OpensslNameUtils.convertFromRfc2253(rfc2253, true);
-		}
 	}
 
 	/**

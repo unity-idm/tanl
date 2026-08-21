@@ -309,7 +309,7 @@ public class CRLTest
 		
 		OpensslCRLStoreSpi store = new OpensslCRLStoreSpi(
 				"src/test/resources/openssl-testcrldir", -1, t, 
-				new ObserversHandler(Collections.singleton(listener)), false);
+				new ObserversHandler(Collections.singleton(listener)));
 
 		
 		checkCRL("CN=the trusted CA,OU=Relaxation,O=Utopia,L=Tropic,C=UG", store, 1);

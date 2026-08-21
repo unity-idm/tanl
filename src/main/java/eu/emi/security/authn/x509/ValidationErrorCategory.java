@@ -18,7 +18,6 @@ import java.util.Properties;
 public enum ValidationErrorCategory
 {
 	GENERAL_INPUT,
-	NAMESPACE,
 	X509_BASIC,
 	X509_CHAIN,
 	POLICY,

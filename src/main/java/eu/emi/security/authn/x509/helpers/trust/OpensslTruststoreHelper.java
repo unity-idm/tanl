@@ -29,7 +29,6 @@ import org.bouncycastle.asn1.x500.AttributeTypeAndValue;
 import org.bouncycastle.asn1.x500.RDN;
 import org.bouncycastle.asn1.x500.X500Name;
 import org.bouncycastle.crypto.Digest;
-import org.bouncycastle.crypto.digests.MD5Digest;
 import org.bouncycastle.crypto.digests.SHA1Digest;
 
 import eu.emi.security.authn.x509.helpers.CertificateHelpers;
@@ -42,24 +41,6 @@ import eu.emi.security.authn.x509.helpers.CertificateHelpers;
 public class OpensslTruststoreHelper
 {
 	public static final String CERT_REGEXP = "^([0-9a-fA-F]{8})\\.[\\d]+$";
-	
-	/**
-	 * @param certLocation certificate location
-	 * @param suffix either '.namespaces' or '.signing_policy' (other will work but rather doesn't make sense)
-	 * @return A proper name of a namespaces or signing policy file for the given base
-	 * path of CA certificate. 
-	 */
-	public static String getNsFile(String certLocation, String suffix)
-	{
-		String fileHash = getFileHash(certLocation, CERT_REGEXP);
-		if (fileHash == null)
-			return null;
-		File f = new File(certLocation);
-		String parent = f.getParent();
-		if (parent == null)
-			parent = ".";
-		return parent + File.separator + fileHash + suffix;
-	}
 	
 	public static String getFileHash(String path, String regexp)
 	{
@@ -92,45 +73,19 @@ public class OpensslTruststoreHelper
 		}, null);
 	}
 	
-	public static String getOpenSSLCAHash(X500Principal name, boolean openssl1Mode)
-	{
-		return openssl1Mode ? getOpenSSLCAHashNew(name) : getOpenSSLCAHashOld(name);
-	}
-	
 	/**
-	 * Generates the hex hash of the DN used by openssl to name the CA
-	 * certificate files. The hash is actually the hex of 8 least
-	 * significant bytes of a MD5 digest of the the ASN.1 encoded DN.
-	 * 
-	 * @param name the DN to hash.
-	 * @return the 8 character string of the hexadecimal MD5 hash.
-	 */
-	private static String getOpenSSLCAHashOld(X500Principal name)
-	{
-		byte[] bytes = name.getEncoded();
-		MD5Digest digest = new MD5Digest();
-		digest.update(bytes, 0, bytes.length);
-		byte output[] = new byte[digest.getDigestSize()];
-		digest.doFinal(output, 0);
-		
-		String ret = String.format("%02x%02x%02x%02x", output[3] & 0xFF,
-				output[2] & 0xFF, output[1] & 0xFF, output[0] & 0xFF);
-		return ret;
-	}
-	
-	/**
-	 * Generates the hex hash of the DN used by openssl 1.0.0 and above to name the CA
-	 * certificate files. The hash is actually the hex of 8 least
-	 * significant bytes of a SHA1 digest of the the ASN.1 encoded DN after normalization.
+	 * Generates the hex hash of the DN used by OpenSSL 1.0.0 and above to name the CA
+	 * certificate files. The hash uses the first four bytes of a SHA-1 digest in
+	 * OpenSSL byte order over the normalized ASN.1-encoded DN.
 	 * <p>
 	 * The normalization is performed as follows:
 	 * all strings are converted to UTF8, leading, trailing and multiple spaces collapsed, 
 	 * converted to lower case and the leading SEQUENCE header is removed.
 	 * 
 	 * @param name the DN to hash.
-	 * @return the 8 character string of the hexadecimal MD5 hash.
+	 * @return the 8 character string of the hexadecimal SHA-1 hash.
 	 */
-	private static String getOpenSSLCAHashNew(X500Principal name)
+	public static String getOpenSSLCAHash(X500Principal name)
 	{
 		byte[] bytes;
 		try

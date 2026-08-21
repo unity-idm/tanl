@@ -15,7 +15,7 @@ import org.junit.Test;
 import eu.emi.security.authn.x509.helpers.trust.OpensslTruststoreHelper;
 
 /**
- * Tests related to openssl 1.0.0 new subject hashes support
+ * Tests modern OpenSSL subject-hash support.
  * @author K. Benedyczak
  */
 public class OpensslNewHashTest
@@ -29,7 +29,7 @@ public class OpensslNewHashTest
 		X500Name newName = new X500Name(c19nrdns);
 		X500Principal newSubject = new X500Principal(newName.getEncoded());
 		System.out.println("After: '" + newSubject.getName() +"'");
-		String hash = OpensslTruststoreHelper.getOpenSSLCAHash(subject, true);
+		String hash = OpensslTruststoreHelper.getOpenSSLCAHash(subject);
 		System.out.println("hash: " + hash);
 		Assert.assertEquals("03b260e0", hash);
 	}

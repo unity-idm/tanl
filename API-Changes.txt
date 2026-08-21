@@ -73,6 +73,84 @@ ValidationErrorCode values were removed. The INCONSISTENT_PROXY_CHAIN and
 INVALID_PROXY_CERT ValidationErrorCategory values were removed with them.
 
 
+OPENSSL TRUSTSTORE SIMPLIFIED
+
+OpenSSL-style truststores now contain hashed CA certificates and CRLs only.
+The library uses the modern OpenSSL subject hash unconditionally. Certificate
+collision suffixes remain HASH.0, HASH.1, and so on; CRL suffixes remain
+HASH.r0, HASH.r1, and so on. Pre-OpenSSL-1.0 MD5 subject hashes are no longer
+recognized. Globus .signing_policy and EUGridPMA .namespaces files are neither
+loaded nor enforced.
+
+The following public types were removed:
+
+- eu.emi.security.authn.x509.NamespaceCheckingMode
+- eu.emi.security.authn.x509.helpers.ns.AbstractEuGridPmaNamespacesStore
+- eu.emi.security.authn.x509.helpers.ns.AbstractGlobusNamespacesStore
+- eu.emi.security.authn.x509.helpers.ns.AbstractNamespacesStore
+- eu.emi.security.authn.x509.helpers.ns.EuGridPmaNamespacesParser
+- eu.emi.security.authn.x509.helpers.ns.EuGridPmaNamespacesStore
+- eu.emi.security.authn.x509.helpers.ns.GlobusNamespacesParser
+- eu.emi.security.authn.x509.helpers.ns.GlobusNamespacesParser.InvalidPolicyFilenameException
+- eu.emi.security.authn.x509.helpers.ns.GlobusNamespacesParser.PolicySyntaxException
+- eu.emi.security.authn.x509.helpers.ns.GlobusNamespacesStore
+- eu.emi.security.authn.x509.helpers.ns.LazyEuGridPmaNamespacesStore
+- eu.emi.security.authn.x509.helpers.ns.LazyGlobusNamespacesStore
+- eu.emi.security.authn.x509.helpers.ns.NamespaceChecker
+- eu.emi.security.authn.x509.helpers.ns.NamespacePolicy
+- eu.emi.security.authn.x509.helpers.ns.NamespacesParser
+- eu.emi.security.authn.x509.helpers.ns.NamespacesStore
+- eu.emi.security.authn.x509.helpers.ns.OpensslNamespacePolicyImpl
+- eu.emi.security.authn.x509.helpers.ns.ParserUtils
+- eu.emi.security.authn.x509.helpers.trust.OpensslTrustAnchorStore
+
+The following OpensslCertChainValidator members and constructor signatures
+were removed:
+
+- OpensslCertChainValidator(String, NamespaceCheckingMode, long,
+  ValidatorParams)
+- OpensslCertChainValidator(String, boolean, NamespaceCheckingMode, long,
+  ValidatorParams)
+- OpensslCertChainValidator(String, boolean, NamespaceCheckingMode, long,
+  ValidatorParams, boolean)
+- OpensslCertChainValidator(String, NamespaceCheckingMode, long)
+- OpensslCertChainValidator.getNamespaceCheckingMode()
+
+Use these modern-hash replacements:
+
+- OpensslCertChainValidator(String, long, ValidatorParams)
+- OpensslCertChainValidator(String, long, ValidatorParams, boolean)
+- OpensslCertChainValidator(String, long)
+- OpensslCertChainValidator(String)
+
+The final boolean in the full replacement constructor still selects lazy or
+eager loading. There is no namespace or hash-format compatibility flag.
+
+The following namespace-specific members were removed:
+
+- StoreUpdateListener.EACL_NAMESPACE
+- StoreUpdateListener.EUGRIDPMA_NAMESPACE
+- ValidationErrorCode.nsUndefinedAndRequired
+- ValidationErrorCode.nsDeny
+- ValidationErrorCode.nsNotAccepted
+- ValidationErrorCategory.NAMESPACE
+
+The following helper signatures were removed or replaced:
+
+- OpensslTruststoreHelper.getNsFile(String, String)
+- OpensslTruststoreHelper.getOpenSSLCAHash(X500Principal, boolean), replaced
+  by getOpenSSLCAHash(X500Principal)
+- OpensslTrustAnchorStoreImpl(String, Timer, long, boolean, boolean,
+  ObserversHandler, boolean), replaced by the same constructor without the
+  three boolean namespace/hash arguments
+- LazyOpensslTrustAnchorStoreImpl(String, long, ObserversHandler, boolean),
+  replaced by the same constructor without the boolean hash argument
+- OpensslCRLStoreSpi(String, long, Timer, ObserversHandler, boolean), replaced
+  by the same constructor without the boolean hash argument
+- LazyOpensslCRLStoreSpi(String, long, ObserversHandler, boolean), replaced by
+  the same constructor without the boolean hash argument
+
+
 2.x HISTORICAL CHANGES
 
 1) changed semantics of the DN compare methods operating on the string representation.

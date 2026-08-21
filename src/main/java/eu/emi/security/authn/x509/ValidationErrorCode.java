@@ -19,10 +19,6 @@ public enum ValidationErrorCode
 	unknown,
 	unknownMsg,
 	
-	nsUndefinedAndRequired,
-	nsDeny,
-	nsNotAccepted,
-	
 	inputError,
 	emptyCertPath,
 	invalidCertificatePath,
