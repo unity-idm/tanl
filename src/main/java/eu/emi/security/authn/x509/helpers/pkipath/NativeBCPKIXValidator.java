@@ -4,6 +4,7 @@
  */
 package eu.emi.security.authn.x509.helpers.pkipath;
 
+import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.security.GeneralSecurityException;
@@ -37,8 +38,11 @@ import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
+import org.bouncycastle.cert.ocsp.OCSPException;
+import org.bouncycastle.cert.ocsp.OCSPReq;
 import org.bouncycastle.jcajce.PKIXExtendedParameters;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 
@@ -47,6 +51,7 @@ import eu.emi.security.authn.x509.ValidationError;
 import eu.emi.security.authn.x509.ValidationErrorCode;
 import eu.emi.security.authn.x509.ValidationResult;
 import eu.emi.security.authn.x509.ValidationStage;
+import eu.emi.security.authn.x509.helpers.ocsp.OCSPClientImpl;
 import eu.emi.security.authn.x509.impl.CertificateUtils;
 
 /**
@@ -72,7 +77,7 @@ final class NativeBCPKIXValidator
 	ValidationResult validate(X509Certificate[] input, Set<TrustAnchor> configuredAnchors)
 			throws CertificateException
 	{
-		return validate(input, configuredAnchors, null, null, null, false);
+		return validate(input, configuredAnchors, null, null, null, false, null);
 	}
 
 	/**
@@ -85,7 +90,7 @@ final class NativeBCPKIXValidator
 	{
 		if (crlStore == null)
 			return invalidInput(input, -1, "CRL store must not be null");
-		return validate(input, configuredAnchors, crlStore, null, null, false);
+		return validate(input, configuredAnchors, crlStore, null, null, false, null);
 	}
 
 	/**
@@ -105,7 +110,35 @@ final class NativeBCPKIXValidator
 		try
 		{
 			return validate(input, configuredAnchors, null,
-					responder.getAddress().toURI(), responder.getCertificate(), false);
+					responder.getAddress().toURI(), responder.getCertificate(), false, null);
+		} catch (URISyntaxException e)
+		{
+			return invalid(input, -1, ValidationErrorCode.INVALID_INPUT,
+					ValidationStage.INPUT, e);
+		}
+	}
+
+	/**
+	 * Builds and validates a path, fetches responses using the configured
+	 * per-request timeout, and delegates response validation to native BC.
+	 */
+	ValidationResult validateWithOCSP(X509Certificate[] input,
+			Set<TrustAnchor> configuredAnchors, OCSPResponder responder,
+			int timeout) throws CertificateException
+	{
+		if (timeout < 0)
+			return invalidInput(input, -1, "OCSP timeout must not be negative");
+		if (responder == null)
+			return invalidInput(input, -1, "OCSP responder must not be null");
+		if (responder.getAddress() == null)
+			return invalidInput(input, -1, "OCSP responder address must not be null");
+		if (responder.getCertificate() == null)
+			return invalidInput(input, -1, "OCSP responder certificate must not be null");
+		try
+		{
+			return validate(input, configuredAnchors, null,
+					responder.getAddress().toURI(), responder.getCertificate(), false,
+					Integer.valueOf(timeout));
 		} catch (URISyntaxException e)
 		{
 			return invalid(input, -1, ValidationErrorCode.INVALID_INPUT,
@@ -120,13 +153,26 @@ final class NativeBCPKIXValidator
 	ValidationResult validateWithOCSPFromAIA(X509Certificate[] input,
 			Set<TrustAnchor> configuredAnchors) throws CertificateException
 	{
-		return validate(input, configuredAnchors, null, null, null, true);
+		return validate(input, configuredAnchors, null, null, null, true, null);
+	}
+
+	/**
+	 * Builds and validates a path, discovers one responder per certificate,
+	 * and fetches responses using the configured per-request timeout.
+	 */
+	ValidationResult validateWithOCSPFromAIA(X509Certificate[] input,
+			Set<TrustAnchor> configuredAnchors, int timeout) throws CertificateException
+	{
+		if (timeout < 0)
+			return invalidInput(input, -1, "OCSP timeout must not be negative");
+		return validate(input, configuredAnchors, null, null, null, true,
+				Integer.valueOf(timeout));
 	}
 
 	private ValidationResult validate(X509Certificate[] input,
 			Set<TrustAnchor> configuredAnchors, CertStore crlStore,
 			URI ocspResponder, X509Certificate ocspResponderCertificate,
-			boolean discoverOCSPResponders)
+			boolean discoverOCSPResponders, Integer ocspTimeout)
 			throws CertificateException
 	{
 		ValidationResult inputFailure = checkInput(input);
@@ -156,7 +202,7 @@ final class NativeBCPKIXValidator
 			return validatePath(built.getCertPath(),
 					Collections.singleton(built.getTrustAnchor()), crlStore,
 					collectionStore(Arrays.asList(input)), ocspResponder,
-					ocspResponderCertificate, discoverOCSPResponders);
+					ocspResponderCertificate, discoverOCSPResponders, ocspTimeout);
 		} catch (CertPathBuilderException e)
 		{
 			List<X509Certificate> asserted = normalize(Arrays.asList(input), anchors);
@@ -166,7 +212,7 @@ final class NativeBCPKIXValidator
 			if (isCoherent(asserted))
 				return validatePath(toCertPath(asserted), anchors, crlStore,
 						collectionStore(Arrays.asList(input)), ocspResponder,
-						ocspResponderCertificate, discoverOCSPResponders);
+						ocspResponderCertificate, discoverOCSPResponders, ocspTimeout);
 			return invalid(input, -1, ValidationErrorCode.PATH_BUILDING_FAILED,
 					ValidationStage.PATH_BUILDING, e);
 		} catch (InvalidAlgorithmParameterException e)
@@ -183,7 +229,7 @@ final class NativeBCPKIXValidator
 	ValidationResult validate(CertPath suppliedPath, Set<TrustAnchor> configuredAnchors)
 			throws CertificateException
 	{
-		return validate(suppliedPath, configuredAnchors, null, null, null, false);
+		return validate(suppliedPath, configuredAnchors, null, null, null, false, null);
 	}
 
 	/**
@@ -195,7 +241,7 @@ final class NativeBCPKIXValidator
 	{
 		if (crlStore == null)
 			return invalidInput(null, -1, "CRL store must not be null");
-		return validate(suppliedPath, configuredAnchors, crlStore, null, null, false);
+		return validate(suppliedPath, configuredAnchors, crlStore, null, null, false, null);
 	}
 
 	/**
@@ -215,7 +261,35 @@ final class NativeBCPKIXValidator
 		try
 		{
 			return validate(suppliedPath, configuredAnchors, null,
-					responder.getAddress().toURI(), responder.getCertificate(), false);
+					responder.getAddress().toURI(), responder.getCertificate(), false, null);
+		} catch (URISyntaxException e)
+		{
+			return invalid(null, -1, ValidationErrorCode.INVALID_INPUT,
+					ValidationStage.INPUT, e);
+		}
+	}
+
+	/**
+	 * Validates an asserted path after fetching OCSP responses with the
+	 * configured per-request timeout.
+	 */
+	ValidationResult validateWithOCSP(CertPath suppliedPath,
+			Set<TrustAnchor> configuredAnchors, OCSPResponder responder,
+			int timeout) throws CertificateException
+	{
+		if (timeout < 0)
+			return invalidInput(null, -1, "OCSP timeout must not be negative");
+		if (responder == null)
+			return invalidInput(null, -1, "OCSP responder must not be null");
+		if (responder.getAddress() == null)
+			return invalidInput(null, -1, "OCSP responder address must not be null");
+		if (responder.getCertificate() == null)
+			return invalidInput(null, -1, "OCSP responder certificate must not be null");
+		try
+		{
+			return validate(suppliedPath, configuredAnchors, null,
+					responder.getAddress().toURI(), responder.getCertificate(), false,
+					Integer.valueOf(timeout));
 		} catch (URISyntaxException e)
 		{
 			return invalid(null, -1, ValidationErrorCode.INVALID_INPUT,
@@ -230,13 +304,26 @@ final class NativeBCPKIXValidator
 	ValidationResult validateWithOCSPFromAIA(CertPath suppliedPath,
 			Set<TrustAnchor> configuredAnchors) throws CertificateException
 	{
-		return validate(suppliedPath, configuredAnchors, null, null, null, true);
+		return validate(suppliedPath, configuredAnchors, null, null, null, true, null);
+	}
+
+	/**
+	 * Validates an asserted path using discovered responders and the configured
+	 * per-request timeout.
+	 */
+	ValidationResult validateWithOCSPFromAIA(CertPath suppliedPath,
+			Set<TrustAnchor> configuredAnchors, int timeout) throws CertificateException
+	{
+		if (timeout < 0)
+			return invalidInput(null, -1, "OCSP timeout must not be negative");
+		return validate(suppliedPath, configuredAnchors, null, null, null, true,
+				Integer.valueOf(timeout));
 	}
 
 	private ValidationResult validate(CertPath suppliedPath,
 			Set<TrustAnchor> configuredAnchors, CertStore crlStore,
 			URI ocspResponder, X509Certificate ocspResponderCertificate,
-			boolean discoverOCSPResponders)
+			boolean discoverOCSPResponders, Integer ocspTimeout)
 			throws CertificateException
 	{
 		if (suppliedPath == null)
@@ -268,7 +355,7 @@ final class NativeBCPKIXValidator
 		}
 		return validatePath(toCertPath(normalized), anchors, crlStore,
 				collectionStore(supplied), ocspResponder,
-				ocspResponderCertificate, discoverOCSPResponders);
+				ocspResponderCertificate, discoverOCSPResponders, ocspTimeout);
 	}
 
 	private PKIXCertPathBuilderResult build(X509Certificate[] input, Set<TrustAnchor> anchors)
@@ -285,7 +372,8 @@ final class NativeBCPKIXValidator
 
 	private ValidationResult validatePath(CertPath path, Set<TrustAnchor> anchors,
 			CertStore crlStore, CertStore certificateStore, URI ocspResponder,
-			X509Certificate ocspResponderCertificate, boolean discoverOCSPResponders)
+			X509Certificate ocspResponderCertificate, boolean discoverOCSPResponders,
+			Integer ocspTimeout)
 	{
 		X509Certificate[] diagnosticChain = pathCertificates(path);
 		PKIXCertPathValidatorResult result;
@@ -329,6 +417,15 @@ final class NativeBCPKIXValidator
 		}
 		else if (ocspResponder != null)
 		{
+			if (ocspTimeout != null)
+			{
+				ValidationResult ocspResult = validateExplicitOCSP(path,
+						result.getTrustAnchor(), certificateStore, diagnosticChain,
+						ocspResponder, ocspResponderCertificate, ocspTimeout.intValue());
+				if (ocspResult != null)
+					return ocspResult;
+				return valid(resolvedChain(path, result.getTrustAnchor()));
+			}
 			try
 			{
 				result = validateNativeWithOCSP(path, anchors, certificateStore,
@@ -350,7 +447,8 @@ final class NativeBCPKIXValidator
 		else if (discoverOCSPResponders)
 		{
 			ValidationResult ocspResult = validateDiscoveredOCSP(path,
-					result.getTrustAnchor(), certificateStore, diagnosticChain);
+					result.getTrustAnchor(), certificateStore, diagnosticChain,
+					ocspTimeout);
 			if (ocspResult != null)
 				return ocspResult;
 		}
@@ -393,6 +491,51 @@ final class NativeBCPKIXValidator
 		return (PKIXCertPathValidatorResult) validator.validate(path, params);
 	}
 
+	private PKIXCertPathValidatorResult validateNativeWithOCSPResponse(CertPath path,
+			Set<TrustAnchor> anchors, CertStore certificateStore,
+			X509Certificate certificate, byte[] response,
+			X509Certificate responderCertificate)
+			throws CertPathValidatorException, InvalidAlgorithmParameterException
+	{
+		CertPathValidator validator = certPathValidator();
+		PKIXRevocationChecker checker =
+				(PKIXRevocationChecker) validator.getRevocationChecker();
+		checker.setOptions(EnumSet.of(PKIXRevocationChecker.Option.NO_FALLBACK));
+		Map<X509Certificate, byte[]> responses =
+				Collections.singletonMap(certificate, response);
+		checker.setOcspResponses(responses);
+		if (responderCertificate != null)
+			checker.setOcspResponderCert(responderCertificate);
+
+		PKIXParameters params = new PKIXParameters(anchors);
+		params.setRevocationEnabled(false);
+		params.addCertStore(certificateStore);
+		params.addCertPathChecker(checker);
+		return (PKIXCertPathValidatorResult) validator.validate(path, params);
+	}
+
+	private ValidationResult validateExplicitOCSP(CertPath path,
+			TrustAnchor selectedAnchor, CertStore certificateStore,
+			X509Certificate[] diagnosticChain, URI responder,
+			X509Certificate responderCertificate, int timeout)
+	{
+		List<? extends Certificate> certificates = path.getCertificates();
+		for (int i=0; i<certificates.size(); i++)
+		{
+			X509Certificate certificate = (X509Certificate) certificates.get(i);
+			X509Certificate issuer = issuer(certificates, selectedAnchor, i);
+			if (issuer == null)
+				return ocspDiscoveryFailure(diagnosticChain, path, i,
+						"OCSP validation requires the issuer trust-anchor certificate", null);
+			ValidationResult failure = validateFetchedOCSPEdge(certificate, issuer,
+					responder, responderCertificate, timeout, certificateStore,
+					diagnosticChain, i);
+			if (failure != null)
+				return failure;
+		}
+		return null;
+	}
+
 	/**
 	 * BC exposes only one responder URI per checker. Validate one already
 	 * base-validated certificate/issuer edge at a time so each certificate can
@@ -401,15 +544,13 @@ final class NativeBCPKIXValidator
 	 */
 	private ValidationResult validateDiscoveredOCSP(CertPath path,
 			TrustAnchor selectedAnchor, CertStore certificateStore,
-			X509Certificate[] diagnosticChain)
+			X509Certificate[] diagnosticChain, Integer timeout)
 	{
 		List<? extends Certificate> certificates = path.getCertificates();
 		for (int i=0; i<certificates.size(); i++)
 		{
 			X509Certificate certificate = (X509Certificate) certificates.get(i);
-			X509Certificate issuer = i+1 < certificates.size() ?
-					(X509Certificate) certificates.get(i+1) :
-					selectedAnchor.getTrustedCert();
+			X509Certificate issuer = issuer(certificates, selectedAnchor, i);
 			if (issuer == null)
 				return ocspDiscoveryFailure(diagnosticChain, path, i,
 						"OCSP validation requires the issuer trust-anchor certificate", null);
@@ -430,6 +571,15 @@ final class NativeBCPKIXValidator
 			CertPath edgePath = toCertPath(Collections.singletonList(certificate));
 			Set<TrustAnchor> edgeAnchor = Collections.singleton(
 					new TrustAnchor(issuer, null));
+			if (timeout != null)
+			{
+				ValidationResult failure = validateFetchedOCSPEdge(certificate, issuer,
+						responders.get(0), null, timeout.intValue(), certificateStore,
+						diagnosticChain, i);
+				if (failure != null)
+					return failure;
+				continue;
+			}
 			try
 			{
 				validateNativeWithOCSP(edgePath, edgeAnchor, certificateStore,
@@ -448,6 +598,54 @@ final class NativeBCPKIXValidator
 			}
 		}
 		return null;
+	}
+
+	private ValidationResult validateFetchedOCSPEdge(X509Certificate certificate,
+			X509Certificate issuer, URI responder,
+			X509Certificate responderCertificate, int timeout,
+			CertStore certificateStore, X509Certificate[] diagnosticChain,
+			int position)
+	{
+		CertPath edgePath = toCertPath(Collections.singletonList(certificate));
+		Set<TrustAnchor> edgeAnchor = Collections.singleton(
+				new TrustAnchor(issuer, null));
+		try
+		{
+			OCSPClientImpl client = new OCSPClientImpl();
+			OCSPReq request = client.createRequest(certificate, issuer, null, false);
+			byte[] response = client.send(responder.toURL(), request, timeout)
+					.getResponse().getEncoded();
+			validateNativeWithOCSPResponse(edgePath, edgeAnchor, certificateStore,
+					certificate, response, responderCertificate);
+			return null;
+		} catch (CertPathValidatorException e)
+		{
+			return invalidRevocationValidation(diagnosticChain, e, position);
+		} catch (InvalidAlgorithmParameterException e)
+		{
+			throw new IllegalStateException(
+					"Native BC PKIX validator rejected prefetched OCSP parameters", e);
+		} catch (IOException e)
+		{
+			return invalid(diagnosticChain, position, ValidationErrorCode.PKIX_FAILURE,
+					ValidationStage.REVOCATION, e);
+		} catch (OCSPException e)
+		{
+			return invalid(diagnosticChain, position, ValidationErrorCode.PKIX_FAILURE,
+					ValidationStage.REVOCATION, e);
+		} catch (RuntimeException e)
+		{
+			return invalid(diagnosticChain, position, ValidationErrorCode.PKIX_FAILURE,
+					ValidationStage.REVOCATION, e);
+		}
+	}
+
+	private X509Certificate issuer(List<? extends Certificate> certificates,
+			TrustAnchor selectedAnchor, int position)
+	{
+		return position+1 < certificates.size() ?
+				(X509Certificate) certificates.get(position+1) :
+				selectedAnchor.getTrustedCert();
 	}
 
 	private ValidationResult ocspDiscoveryFailure(X509Certificate[] chain,
