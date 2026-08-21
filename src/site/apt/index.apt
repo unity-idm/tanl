@@ -1,15 +1,15 @@
    ------
-EMI X.509 Common Authentication Library - Java API
+Common X.509 Authentication Library - Java API
    ------
    
-EMI X.509 Common Authentication Library - Java API
+Common X.509 Authentication Library - Java API
 
   
-	EMI Common Authentication Library provides foundation code for establishing secure
+	The Common Authentication Library provides foundation code for establishing secure
 SSL/TLS connections and validating certificate chains.
 
-	The library manual including functional description, programmer's guide and examples
-can be found here: in {{{./manual.html}HTML format}} and in {{{./manual.pdf}PDF format}}.  
+	The library manual, including the functional description, programmer's guide, and
+examples, is maintained as +src/main/doc/manual.txt+ in the source repository.
 
 	The API documentation is available in Javadoc format. It is linked under 
-''Project Reports'' section in your left menu.
+the ''Project Reports'' section in the left menu.

@@ -4,10 +4,9 @@ Krzysztof Benedyczak <golbi a-t icm.edu.pl>
 :revnumber: 1.0.1
 :numbered:
 
-Welcome to the documentation of the EMI X.509 Common Authentication Library, the Java edition!
+Welcome to the documentation of the Common X.509 Authentication Library for Java.
 
-This library was designed in the first place to support authentication and 
-other X.509 PKI related operations of the components maintained by the EMI project.
+This library supports authentication and other X.509 PKI operations in Java applications.
 This document provides an overview and introductory material. It should be read accompanied
 by the library's API documentation in Javadoc format, available from the library project's 
 web page.
@@ -15,7 +14,7 @@ web page.
 Functional Description
 ----------------------
 
-The EMI X.509 Common Authentication Library, the Java edition, provides support for:
+The Common X.509 Authentication Library provides support for:
 
 * off-line certificate validation,
 * creation of SSL sockets (both server and client side),
@@ -85,18 +84,15 @@ If a project using this library is managed by Maven, it is enough to add this li
 with the following snippet:
 ------------
 	<dependency>
-		<groupId>eu.emi.security</groupId>
-		<artifactId>authnlib</artifactId>
+		<groupId>eu.eu-emi.security</groupId>
+		<artifactId>canl</artifactId>
 		<version>DESIRED-VERSION-HERE</version>
 	</dependency>
 ------------
 
-The library is deployed in the Maven central repository.
-
 Non-maven users must ensure that all 'compile' dependencies of this library are available. The up to date
-(and very short) list of dependencies is available from the library documentation page. Choose in the leftmost
-menu: 'Project Documentation -> Project Information -> Dependencies'. Note that relevant are only 
-those dependencies which are enumerated in the first table as 'compile' dependencies.  
+(and very short) list of dependencies is available in the project's +pom.xml+. Runtime dependencies
+are the entries whose scope is not +test+.
 
 Note on usage of string representation of Distinguished Names
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -135,22 +131,22 @@ Checking a certificate chain using OpenSSL style directory with trusted CA
 certificates: 
 ------------
 /*
- * Validates toBeChecked chain using Openssl style truststore, from
- * the /etc/grid-security/certificates directory. Truststore is
+ * Validates toBeChecked chain using an OpenSSL-style truststore from
+ * an application-selected directory. The truststore is
  * reread every minute. The additional settings are not defined and
  * so defaults are used: CRLs are forced if are present. No listeners are registered to
  * be notified about trusted CA certificate or CRL reloading.
  */
 X509Certificate[] toBeChecked = null;
 X509CertChainValidator vff = new OpensslCertChainValidator(
-	"/etc/grid-security/certificates", 
+	"/path/to/openssl-truststore",
 	60000);
 
 ValidationResult result = vff.validate(toBeChecked);
 if (result.isValid()) {
 	//...
 } else {
-	List<ValidationError> errors = result.getErrors();
+	ValidationError error = result.getPrimaryError();
 	//...
 }
 ------------
@@ -287,8 +283,8 @@ remains as an empty or single-element compatibility view, while
 Building the library
 --------------------
 
-To build the library Maven 2 is needed. After obtaining the source code (see 
-the library main web page of coordinates) it is enough to run:
+To build the library, Java 8 or newer and Maven 3.1.1 or newer are needed.
+After obtaining the source code it is enough to run:
 
 ---------
 $ mvn package
