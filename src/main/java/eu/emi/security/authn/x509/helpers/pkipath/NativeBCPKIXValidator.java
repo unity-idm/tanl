@@ -6,6 +6,7 @@ package eu.emi.security.authn.x509.helpers.pkipath;
 
 import java.io.File;
 import java.io.IOException;
+import java.net.HttpURLConnection;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
@@ -64,6 +65,7 @@ import eu.emi.security.authn.x509.ValidationErrorCode;
 import eu.emi.security.authn.x509.ValidationResult;
 import eu.emi.security.authn.x509.ValidationStage;
 import eu.emi.security.authn.x509.helpers.ocsp.OCSPClientImpl;
+import eu.emi.security.authn.x509.helpers.ocsp.OCSPClientImpl.OCSPHTTPException;
 import eu.emi.security.authn.x509.helpers.ocsp.OCSPClientImpl.OCSPResponseDecodingException;
 import eu.emi.security.authn.x509.helpers.ocsp.OCSPResponseStructure;
 import eu.emi.security.authn.x509.impl.CertificateUtils;
@@ -80,6 +82,8 @@ final class NativeBCPKIXValidator
 	private static final String BC = BouncyCastleProvider.PROVIDER_NAME;
 	private final NativeOCSPResponseCache<OCSPCacheKey> ocspResponseCache =
 			new NativeOCSPResponseCache<OCSPCacheKey>();
+	private final NativeOCSPResponderFailureCache ocspResponderFailureCache =
+			new NativeOCSPResponderFailureCache();
 
 	static
 	{
@@ -932,6 +936,15 @@ final class NativeBCPKIXValidator
 						cacheKey.diskKey);
 			}
 		}
+		if (ocspResponderFailureCache.contains(responder, fetchPolicy.cacheTtl,
+				fetchPolicy.diskCache))
+		{
+			IOException failure = new IOException(
+					"OCSP responder has a cached transport failure: " + responder);
+			return OCSPResponderAttempt.failure(invalid(diagnosticChain, position,
+					ValidationErrorCode.PKIX_FAILURE, ValidationStage.REVOCATION,
+					failure), true);
+		}
 		OCSPClientImpl client = new OCSPClientImpl();
 		OCSPReq request;
 		try
@@ -955,10 +968,16 @@ final class NativeBCPKIXValidator
 					fetchPolicy.timeout);
 		} catch (OCSPResponseDecodingException e)
 		{
+			ocspResponderFailureCache.remove(responder, fetchPolicy.diskCache);
 			return OCSPResponderAttempt.failure(invalid(diagnosticChain, position,
 					ValidationErrorCode.PKIX_FAILURE, ValidationStage.REVOCATION, e), false);
 		} catch (IOException e)
 		{
+			if (isResponderWideTransportFailure(e))
+				ocspResponderFailureCache.put(responder, fetchPolicy.cacheTtl,
+						fetchPolicy.diskCache);
+			else
+				ocspResponderFailureCache.remove(responder, fetchPolicy.diskCache);
 			return OCSPResponderAttempt.failure(invalid(diagnosticChain, position,
 					ValidationErrorCode.PKIX_FAILURE, ValidationStage.REVOCATION, e), true);
 		} catch (RuntimeException e)
@@ -966,6 +985,7 @@ final class NativeBCPKIXValidator
 			return OCSPResponderAttempt.failure(invalid(diagnosticChain, position,
 					ValidationErrorCode.PKIX_FAILURE, ValidationStage.REVOCATION, e), false);
 		}
+		ocspResponderFailureCache.remove(responder, fetchPolicy.diskCache);
 
 		try
 		{
@@ -999,6 +1019,16 @@ final class NativeBCPKIXValidator
 			return OCSPResponderAttempt.failure(invalid(diagnosticChain, position,
 					ValidationErrorCode.PKIX_FAILURE, ValidationStage.REVOCATION, e), false);
 		}
+	}
+
+	private boolean isResponderWideTransportFailure(IOException failure)
+	{
+		if (!(failure instanceof OCSPHTTPException))
+			return true;
+		int status = ((OCSPHTTPException) failure).getStatusCode();
+		return status == HttpURLConnection.HTTP_BAD_GATEWAY ||
+				status == HttpURLConnection.HTTP_UNAVAILABLE ||
+				status == HttpURLConnection.HTTP_GATEWAY_TIMEOUT;
 	}
 
 	private void validateResponseNonce(OCSPReq request, OCSPResp response)

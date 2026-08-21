@@ -60,8 +60,9 @@ public class OCSPParametes
 	 * do not sign requests and do not use nonce. 
 	 * @param checkingMode general checking mode
 	 * @param localResponders list of local responders (can be empty, but not null)
-	 * @param cacheTtl maximum time after each cached response expires. Negative for no cache at all, 0 for no limit
-	 * (i.e. caching time will be only controlled by the OCSP response validity period). In s.
+	 * @param cacheTtl maximum time after each cached response or responder transport failure expires.
+	 * Negative for no cache at all, 0 for response-validity limits only. A responder failure has no
+	 * validity metadata, so 0 uses {@link #DEFAULT_CACHE} for failure entries. In s.
 	 * @param diskCachePath if not null, cached responses will be stored on disk.
 	 */
 	public OCSPParametes(OCSPCheckingMode checkingMode, OCSPResponder[] localResponders, int cacheTtl, 
@@ -77,8 +78,9 @@ public class OCSPParametes
 	 * @param conntectTimeout OCSP responder connection and communication timeout
 	 * @param preferLocalResponders whether to prefer locally defined responders over certificate-defined responder
 	 * @param useNonce whether to use in request and require in response the nonce
-	 * @param cacheTtl maximum time after each cached response expires. Negative for no cache at all, 0 for no limit
-	 * (i.e. caching time will be only controlled by the OCSP response validity period). In s.
+	 * @param cacheTtl maximum time after each cached response or responder transport failure expires.
+	 * Negative for no cache at all, 0 for response-validity limits only. A responder failure has no
+	 * validity metadata, so 0 uses {@link #DEFAULT_CACHE} for failure entries. In s.
 	 * @param diskCachePath if not null, cached responses will be stored on disk.
 	 */
 	public OCSPParametes(OCSPCheckingMode checkingMode, OCSPResponder[] localResponders,
