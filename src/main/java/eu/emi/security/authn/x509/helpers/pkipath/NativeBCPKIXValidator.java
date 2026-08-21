@@ -48,9 +48,12 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
+import org.bouncycastle.asn1.ocsp.OCSPObjectIdentifiers;
+import org.bouncycastle.asn1.x509.Extension;
 import org.bouncycastle.cert.ocsp.BasicOCSPResp;
 import org.bouncycastle.cert.ocsp.OCSPException;
 import org.bouncycastle.cert.ocsp.OCSPReq;
+import org.bouncycastle.cert.ocsp.OCSPResp;
 import org.bouncycastle.cert.ocsp.SingleResp;
 import org.bouncycastle.jcajce.PKIXExtendedParameters;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
@@ -162,6 +165,19 @@ final class NativeBCPKIXValidator
 			int timeout, int cacheTtl, String diskCachePath)
 			throws CertificateException
 	{
+		return validateWithOCSP(input, configuredAnchors, responder, timeout,
+				cacheTtl, diskCachePath, false);
+	}
+
+	/**
+	 * Builds and validates a path using configured transport, cache, and nonce
+	 * controls. Nonce-enabled requests bypass response caching.
+	 */
+	ValidationResult validateWithOCSP(X509Certificate[] input,
+			Set<TrustAnchor> configuredAnchors, OCSPResponder responder,
+			int timeout, int cacheTtl, String diskCachePath, boolean useNonce)
+			throws CertificateException
+	{
 		if (timeout < 0)
 			return invalidInput(input, -1, "OCSP timeout must not be negative");
 		if (responder == null)
@@ -174,7 +190,7 @@ final class NativeBCPKIXValidator
 		{
 			return validate(input, configuredAnchors, null,
 					responder.getAddress().toURI(), responder.getCertificate(), false,
-					new OCSPFetchPolicy(timeout, cacheTtl, diskCachePath));
+					new OCSPFetchPolicy(timeout, cacheTtl, diskCachePath, useNonce));
 		} catch (URISyntaxException e)
 		{
 			return invalid(input, -1, ValidationErrorCode.INVALID_INPUT,
@@ -222,10 +238,22 @@ final class NativeBCPKIXValidator
 			Set<TrustAnchor> configuredAnchors, int timeout, int cacheTtl,
 			String diskCachePath) throws CertificateException
 	{
+		return validateWithOCSPFromAIA(input, configuredAnchors, timeout,
+				cacheTtl, diskCachePath, false);
+	}
+
+	/**
+	 * Builds and validates a path using discovered responders and configured
+	 * transport, cache, and nonce controls.
+	 */
+	ValidationResult validateWithOCSPFromAIA(X509Certificate[] input,
+			Set<TrustAnchor> configuredAnchors, int timeout, int cacheTtl,
+			String diskCachePath, boolean useNonce) throws CertificateException
+	{
 		if (timeout < 0)
 			return invalidInput(input, -1, "OCSP timeout must not be negative");
 		return validate(input, configuredAnchors, null, null, null, true,
-				new OCSPFetchPolicy(timeout, cacheTtl, diskCachePath));
+				new OCSPFetchPolicy(timeout, cacheTtl, diskCachePath, useNonce));
 	}
 
 	private ValidationResult validate(X509Certificate[] input,
@@ -361,6 +389,19 @@ final class NativeBCPKIXValidator
 			int timeout, int cacheTtl, String diskCachePath)
 			throws CertificateException
 	{
+		return validateWithOCSP(suppliedPath, configuredAnchors, responder,
+				timeout, cacheTtl, diskCachePath, false);
+	}
+
+	/**
+	 * Validates an asserted path using configured transport, cache, and nonce
+	 * controls. Nonce-enabled requests bypass response caching.
+	 */
+	ValidationResult validateWithOCSP(CertPath suppliedPath,
+			Set<TrustAnchor> configuredAnchors, OCSPResponder responder,
+			int timeout, int cacheTtl, String diskCachePath, boolean useNonce)
+			throws CertificateException
+	{
 		if (timeout < 0)
 			return invalidInput(null, -1, "OCSP timeout must not be negative");
 		if (responder == null)
@@ -373,7 +414,7 @@ final class NativeBCPKIXValidator
 		{
 			return validate(suppliedPath, configuredAnchors, null,
 					responder.getAddress().toURI(), responder.getCertificate(), false,
-					new OCSPFetchPolicy(timeout, cacheTtl, diskCachePath));
+					new OCSPFetchPolicy(timeout, cacheTtl, diskCachePath, useNonce));
 		} catch (URISyntaxException e)
 		{
 			return invalid(null, -1, ValidationErrorCode.INVALID_INPUT,
@@ -421,10 +462,22 @@ final class NativeBCPKIXValidator
 			Set<TrustAnchor> configuredAnchors, int timeout, int cacheTtl,
 			String diskCachePath) throws CertificateException
 	{
+		return validateWithOCSPFromAIA(suppliedPath, configuredAnchors, timeout,
+				cacheTtl, diskCachePath, false);
+	}
+
+	/**
+	 * Validates an asserted path using discovered responders and configured
+	 * transport, cache, and nonce controls.
+	 */
+	ValidationResult validateWithOCSPFromAIA(CertPath suppliedPath,
+			Set<TrustAnchor> configuredAnchors, int timeout, int cacheTtl,
+			String diskCachePath, boolean useNonce) throws CertificateException
+	{
 		if (timeout < 0)
 			return invalidInput(null, -1, "OCSP timeout must not be negative");
 		return validate(suppliedPath, configuredAnchors, null, null, null, true,
-				new OCSPFetchPolicy(timeout, cacheTtl, diskCachePath));
+				new OCSPFetchPolicy(timeout, cacheTtl, diskCachePath, useNonce));
 	}
 
 	private ValidationResult validate(CertPath suppliedPath,
@@ -718,8 +771,9 @@ final class NativeBCPKIXValidator
 				new TrustAnchor(issuer, null));
 		OCSPCacheKey cacheKey = new OCSPCacheKey(responder, certificate, issuer,
 				responderCertificate);
-		byte[] cachedResponse = ocspResponseCache.get(cacheKey, fetchPolicy.cacheTtl,
-				fetchPolicy.diskCache, cacheKey.diskKey);
+		byte[] cachedResponse = fetchPolicy.useNonce ? null :
+				ocspResponseCache.get(cacheKey, fetchPolicy.cacheTtl,
+						fetchPolicy.diskCache, cacheKey.diskKey);
 		if (cachedResponse != null)
 		{
 			try
@@ -744,14 +798,18 @@ final class NativeBCPKIXValidator
 		try
 		{
 			OCSPClientImpl client = new OCSPClientImpl();
-			OCSPReq request = client.createRequest(certificate, issuer, null, false);
+			OCSPReq request = client.createRequest(certificate, issuer, null,
+					fetchPolicy.useNonce);
 			OCSPResponseStructure fetched = client.send(responder.toURL(), request,
 					fetchPolicy.timeout);
+			if (fetchPolicy.useNonce)
+				validateResponseNonce(request, fetched.getResponse());
 			byte[] response = fetched.getResponse().getEncoded();
 			validateNativeWithOCSPResponse(edgePath, edgeAnchor, certificateStore,
 					certificate, response, responderCertificate);
-			ocspResponseCache.put(cacheKey, response, responseExpiry(fetched),
-					fetchPolicy.cacheTtl, fetchPolicy.diskCache, cacheKey.diskKey);
+			if (!fetchPolicy.useNonce)
+				ocspResponseCache.put(cacheKey, response, responseExpiry(fetched),
+						fetchPolicy.cacheTtl, fetchPolicy.diskCache, cacheKey.diskKey);
 			return null;
 		} catch (CertPathValidatorException e)
 		{
@@ -773,6 +831,26 @@ final class NativeBCPKIXValidator
 			return invalid(diagnosticChain, position, ValidationErrorCode.PKIX_FAILURE,
 					ValidationStage.REVOCATION, e);
 		}
+	}
+
+	private void validateResponseNonce(OCSPReq request, OCSPResp response)
+			throws OCSPException
+	{
+		Extension requested = request.getExtension(
+				OCSPObjectIdentifiers.id_pkix_ocsp_nonce);
+		if (requested == null)
+			throw new IllegalStateException("Nonce-enabled OCSP request has no nonce");
+		Object responseBody = response.getResponseObject();
+		if (!(responseBody instanceof BasicOCSPResp))
+			throw new OCSPException("Nonce-enabled OCSP response has no basic response");
+		Extension received = ((BasicOCSPResp) responseBody).getExtension(
+				OCSPObjectIdentifiers.id_pkix_ocsp_nonce);
+		if (received == null)
+			throw new OCSPException("Nonce-enabled OCSP response has no nonce");
+		byte[] requestedValue = requested.getExtnValue().getOctets();
+		byte[] receivedValue = received.getExtnValue().getOctets();
+		if (!MessageDigest.isEqual(requestedValue, receivedValue))
+			throw new OCSPException("OCSP response nonce does not match the request");
 	}
 
 	private Date responseExpiry(OCSPResponseStructure response)
@@ -811,13 +889,16 @@ final class NativeBCPKIXValidator
 		private final int timeout;
 		private final int cacheTtl;
 		private final File diskCache;
+		private final boolean useNonce;
 
-		private OCSPFetchPolicy(int timeout, int cacheTtl, String diskCachePath)
+		private OCSPFetchPolicy(int timeout, int cacheTtl, String diskCachePath,
+				boolean useNonce)
 		{
 			this.timeout = timeout;
 			this.cacheTtl = cacheTtl;
 			this.diskCache = diskCachePath == null || diskCachePath.trim().isEmpty() ?
 					null : new File(diskCachePath);
+			this.useNonce = useNonce;
 		}
 	}
 

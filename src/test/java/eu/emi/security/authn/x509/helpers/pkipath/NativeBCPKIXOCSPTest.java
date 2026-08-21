@@ -12,6 +12,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.math.BigInteger;
 import java.net.InetSocketAddress;
@@ -28,20 +29,25 @@ import java.security.cert.CertPathValidatorException;
 import java.security.cert.CertificateFactory;
 import java.security.cert.TrustAnchor;
 import java.security.cert.X509Certificate;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Date;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import org.bouncycastle.asn1.DEROctetString;
+import org.bouncycastle.asn1.ocsp.OCSPObjectIdentifiers;
 import org.bouncycastle.asn1.x500.X500Name;
 import org.bouncycastle.asn1.x509.AccessDescription;
 import org.bouncycastle.asn1.x509.AuthorityInformationAccess;
 import org.bouncycastle.asn1.x509.BasicConstraints;
 import org.bouncycastle.asn1.x509.ExtendedKeyUsage;
 import org.bouncycastle.asn1.x509.Extension;
+import org.bouncycastle.asn1.x509.Extensions;
 import org.bouncycastle.asn1.x509.GeneralName;
 import org.bouncycastle.asn1.x509.KeyPurposeId;
 import org.bouncycastle.asn1.x509.KeyUsage;
@@ -52,6 +58,7 @@ import org.bouncycastle.cert.ocsp.BasicOCSPResp;
 import org.bouncycastle.cert.ocsp.BasicOCSPRespBuilder;
 import org.bouncycastle.cert.ocsp.CertificateID;
 import org.bouncycastle.cert.ocsp.CertificateStatus;
+import org.bouncycastle.cert.ocsp.OCSPReq;
 import org.bouncycastle.cert.ocsp.OCSPResp;
 import org.bouncycastle.cert.ocsp.OCSPRespBuilder;
 import org.bouncycastle.cert.ocsp.RevokedStatus;
@@ -259,6 +266,51 @@ public class NativeBCPKIXOCSPTest
 		assertTrue(recovered.toString(), recovered.isValid());
 		assertThat(queries.get(), is(2));
 		assertThat(diskCache.listFiles().length, is(1));
+	}
+
+	@Test
+	public void shouldRequireAndAcceptExactFreshNonce() throws Exception
+	{
+		File diskCache = temporary.newFolder("nonce-cache");
+		AtomicInteger queries = new AtomicInteger();
+		List<byte[]> requestedNonces = new ArrayList<byte[]>();
+		OCSPResponder responder = startNonceResponder(NonceReply.MATCH, queries,
+				requestedNonces);
+
+		ValidationResult arrayResult = validator.validateWithOCSP(
+				new X509Certificate[] {target, root}, anchors, responder, 1000, 60,
+				diskCache.getAbsolutePath(), true);
+		ValidationResult pathResult = validator.validateWithOCSP(
+				path(target, root), anchors, responder, 1000, 60,
+				diskCache.getAbsolutePath(), true);
+
+		assertTrue(arrayResult.toString(), arrayResult.isValid());
+		assertTrue(pathResult.toString(), pathResult.isValid());
+		assertThat(queries.get(), is(2));
+		assertThat(requestedNonces.size(), is(2));
+		assertThat(requestedNonces.get(0).length, is(16));
+		assertThat(requestedNonces.get(1).length, is(16));
+		assertFalse(Arrays.equals(requestedNonces.get(0), requestedNonces.get(1)));
+		assertThat(diskCache.listFiles().length, is(0));
+	}
+
+	@Test
+	public void shouldRejectMissingResponseNonce() throws Exception
+	{
+		ValidationResult result = validateWithNonce(NonceReply.OMIT);
+
+		assertNativeOCSPFailure(result, 0, false);
+		assertTrue(result.getPrimaryError().getProviderMessage().contains("no nonce"));
+	}
+
+	@Test
+	public void shouldRejectMismatchedResponseNonce() throws Exception
+	{
+		ValidationResult result = validateWithNonce(NonceReply.MISMATCH);
+
+		assertNativeOCSPFailure(result, 0, false);
+		assertTrue(result.getPrimaryError().getProviderMessage().contains(
+				"does not match"));
 	}
 
 	@Test
@@ -486,6 +538,13 @@ public class NativeBCPKIXOCSPTest
 				anchors, startResponder(response));
 	}
 
+	private ValidationResult validateWithNonce(NonceReply reply) throws Exception
+	{
+		return validator.validateWithOCSP(new X509Certificate[] {target, root},
+				anchors, startNonceResponder(reply, new AtomicInteger(),
+						new ArrayList<byte[]>()), 1000, 60, null, true);
+	}
+
 	private void assertNativeOCSPFailure(ValidationResult result)
 	{
 		assertNativeOCSPFailure(result, 0, true);
@@ -519,6 +578,59 @@ public class NativeBCPKIXOCSPTest
 		addResponse("/", response, new AtomicInteger());
 		responderServer.start();
 		return new OCSPResponder(responderURI("/").toURL(), responderCertificate);
+	}
+
+	private OCSPResponder startNonceResponder(final NonceReply reply,
+			final AtomicInteger queries, final List<byte[]> requestedNonces)
+			throws Exception
+	{
+		responderServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+		String path = longResponderPath();
+		responderServer.createContext(path, exchange -> {
+			try
+			{
+				queries.incrementAndGet();
+				ByteArrayOutputStream encodedRequest = new ByteArrayOutputStream();
+				byte[] buffer = new byte[256];
+				int read;
+				while ((read = exchange.getRequestBody().read(buffer)) >= 0)
+					encodedRequest.write(buffer, 0, read);
+				OCSPReq request = new OCSPReq(encodedRequest.toByteArray());
+				Extension nonceExtension = request.getExtension(
+						OCSPObjectIdentifiers.id_pkix_ocsp_nonce);
+				if (nonceExtension == null)
+					throw new IllegalStateException("Request has no nonce");
+				byte[] requestedNonce = nonceExtension.getExtnValue().getOctets();
+				requestedNonces.add(requestedNonce.clone());
+				byte[] responseNonce = reply == NonceReply.OMIT ? null :
+						requestedNonce.clone();
+				if (reply == NonceReply.MISMATCH)
+					responseNonce[0] ^= 1;
+				byte[] encodedResponse = response(null, rootKeyPair.getPrivate(),
+						rootKeyPair.getPublic(),
+						new Date(System.currentTimeMillis() + 10 * MINUTE),
+						responseNonce);
+				exchange.getResponseHeaders().set("Content-Type",
+						"application/ocsp-response");
+				exchange.sendResponseHeaders(200, encodedResponse.length);
+				exchange.getResponseBody().write(encodedResponse);
+			} catch (Exception e)
+			{
+				throw new java.io.IOException(e);
+			} finally
+			{
+				exchange.close();
+			}
+		});
+		responderServer.start();
+		return new OCSPResponder(responderURI(path).toURL(), root);
+	}
+
+	private String longResponderPath()
+	{
+		char[] suffix = new char[200];
+		Arrays.fill(suffix, 'n');
+		return "/" + new String(suffix);
 	}
 
 	private void addResponse(String path, final byte[] response,
@@ -566,12 +678,29 @@ public class NativeBCPKIXOCSPTest
 			PublicKey responderPublicKey, Date nextUpdate) throws Exception
 	{
 		return response(target, root, status, signingKey, responderPublicKey,
-				nextUpdate);
+				nextUpdate, null);
+	}
+
+	private byte[] response(CertificateStatus status, PrivateKey signingKey,
+			PublicKey responderPublicKey, Date nextUpdate, byte[] nonce)
+			throws Exception
+	{
+		return response(target, root, status, signingKey, responderPublicKey,
+				nextUpdate, nonce);
 	}
 
 	private byte[] response(X509Certificate certificate,
 			X509Certificate issuer, CertificateStatus status, PrivateKey signingKey,
 			PublicKey responderPublicKey, Date nextUpdate) throws Exception
+	{
+		return response(certificate, issuer, status, signingKey, responderPublicKey,
+				nextUpdate, null);
+	}
+
+	private byte[] response(X509Certificate certificate,
+			X509Certificate issuer, CertificateStatus status, PrivateKey signingKey,
+			PublicKey responderPublicKey, Date nextUpdate, byte[] nonce)
+			throws Exception
 	{
 		DigestCalculator idDigest = new JcaDigestCalculatorProviderBuilder()
 				.setProvider(BC).build().get(CertificateID.HASH_SHA1);
@@ -584,6 +713,10 @@ public class NativeBCPKIXOCSPTest
 				responderPublicKey, responderIdDigest);
 		Date thisUpdate = new Date(System.currentTimeMillis() - MINUTE);
 		builder.addResponse(id, status, thisUpdate, nextUpdate);
+		if (nonce != null)
+			builder.setResponseExtensions(new Extensions(new Extension(
+					OCSPObjectIdentifiers.id_pkix_ocsp_nonce, false,
+					new DEROctetString(nonce))));
 		ContentSigner signer = new JcaContentSignerBuilder("SHA256withRSA")
 				.setProvider(BC).build(signingKey);
 		BasicOCSPResp basic = builder.build(signer,
@@ -648,5 +781,12 @@ public class NativeBCPKIXOCSPTest
 	{
 		return CertificateFactory.getInstance("X.509", BC)
 				.generateCertPath(Arrays.asList(certificates));
+	}
+
+	private enum NonceReply
+	{
+		MATCH,
+		OMIT,
+		MISMATCH
 	}
 }

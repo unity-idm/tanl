@@ -13,6 +13,7 @@ import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.Charset;
 import java.security.PublicKey;
+import java.security.SecureRandom;
 import java.security.cert.CertificateEncodingException;
 import java.security.cert.CertificateException;
 import java.security.cert.CertificateParsingException;
@@ -20,7 +21,6 @@ import java.security.cert.X509Certificate;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
-import java.util.Random;
 
 import javax.net.ssl.HttpsURLConnection;
 import javax.net.ssl.SSLSocketFactory;
@@ -74,6 +74,7 @@ public class OCSPClientImpl
 {
 	private static final Charset ASCII = Charset.forName("US-ASCII");
 	private static final int MAX_RESPONSE_SIZE = 20480;
+	private static final SecureRandom NONCE_RANDOM = new SecureRandom();
 	
 	/**
 	 * Returns a verified single response, related to the checked certificate. This is single-shot version, 
@@ -125,8 +126,7 @@ public class OCSPClientImpl
 		if (addNonce)
 		{
 			byte[] nonce = new byte[16];
-			Random rand = new Random();
-			rand.nextBytes(nonce);
+			NONCE_RANDOM.nextBytes(nonce);
 			Extensions extensions = new Extensions(new Extension(OCSPObjectIdentifiers.id_pkix_ocsp_nonce,
 					false, new DEROctetString(nonce)));
 			generator.setRequestExtensions(extensions);
@@ -505,7 +505,6 @@ public class OCSPClientImpl
 		return octs.getOctets();			
 	}
 }
-
 
 
 
