@@ -70,10 +70,9 @@ import eu.emi.security.authn.x509.ValidationErrorCode;
 import eu.emi.security.authn.x509.ValidationResult;
 import eu.emi.security.authn.x509.ValidationStage;
 import eu.emi.security.authn.x509.helpers.ObserversHandler;
-import eu.emi.security.authn.x509.helpers.ocsp.OCSPClientImpl;
-import eu.emi.security.authn.x509.helpers.ocsp.OCSPClientImpl.OCSPHTTPException;
-import eu.emi.security.authn.x509.helpers.ocsp.OCSPClientImpl.OCSPResponseDecodingException;
-import eu.emi.security.authn.x509.helpers.ocsp.OCSPResponseStructure;
+import eu.emi.security.authn.x509.helpers.pkipath.NativeOCSPClient.HTTPException;
+import eu.emi.security.authn.x509.helpers.pkipath.NativeOCSPClient.Response;
+import eu.emi.security.authn.x509.helpers.pkipath.NativeOCSPClient.ResponseDecodingException;
 import eu.emi.security.authn.x509.impl.CertificateUtils;
 
 /**
@@ -1268,11 +1267,11 @@ final class NativeBCPKIXValidator
 					ValidationErrorCode.PKIX_FAILURE, ValidationStage.REVOCATION,
 					failure), true);
 		}
-		OCSPClientImpl client = new OCSPClientImpl();
+		NativeOCSPClient client = new NativeOCSPClient();
 		OCSPReq request;
 		try
 		{
-			request = client.createRequest(certificate, issuer, null,
+			request = client.createRequest(certificate, issuer,
 					fetchPolicy.useNonce);
 		} catch (OCSPException e)
 		{
@@ -1284,12 +1283,12 @@ final class NativeBCPKIXValidator
 					ValidationErrorCode.PKIX_FAILURE, ValidationStage.REVOCATION, e), false);
 		}
 
-		OCSPResponseStructure fetched;
+		Response fetched;
 		try
 		{
 			fetched = client.send(responder.toURL(), request,
 					fetchPolicy.timeout);
-		} catch (OCSPResponseDecodingException e)
+		} catch (ResponseDecodingException e)
 		{
 			ocspResponderFailureCache.remove(responder, fetchPolicy.diskCache);
 			return notifiedOCSPFailure(responder, invalid(diagnosticChain, position,
@@ -1346,9 +1345,9 @@ final class NativeBCPKIXValidator
 
 	private boolean isResponderWideTransportFailure(IOException failure)
 	{
-		if (!(failure instanceof OCSPHTTPException))
+		if (!(failure instanceof HTTPException))
 			return true;
-		int status = ((OCSPHTTPException) failure).getStatusCode();
+		int status = ((HTTPException) failure).getStatusCode();
 		return status == HttpURLConnection.HTTP_BAD_GATEWAY ||
 				status == HttpURLConnection.HTTP_UNAVAILABLE ||
 				status == HttpURLConnection.HTTP_GATEWAY_TIMEOUT;
@@ -1386,7 +1385,7 @@ final class NativeBCPKIXValidator
 			throw new OCSPException("OCSP response nonce does not match the request");
 	}
 
-	private Date responseExpiry(OCSPResponseStructure response)
+	private Date responseExpiry(Response response)
 	{
 		Date result = response.getMaxCache();
 		try

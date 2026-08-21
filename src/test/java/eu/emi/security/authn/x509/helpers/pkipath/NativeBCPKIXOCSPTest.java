@@ -95,8 +95,8 @@ import eu.emi.security.authn.x509.ValidationErrorCode;
 import eu.emi.security.authn.x509.ValidationResult;
 import eu.emi.security.authn.x509.ValidationStage;
 import eu.emi.security.authn.x509.helpers.ObserversHandler;
-import eu.emi.security.authn.x509.helpers.ocsp.OCSPClientImpl.OCSPHTTPException;
-import eu.emi.security.authn.x509.helpers.ocsp.OCSPClientImpl.OCSPResponseDecodingException;
+import eu.emi.security.authn.x509.helpers.pkipath.NativeOCSPClient.HTTPException;
+import eu.emi.security.authn.x509.helpers.pkipath.NativeOCSPClient.ResponseDecodingException;
 import eu.emi.security.authn.x509.impl.CertificateUtils;
 
 public class NativeBCPKIXOCSPTest
@@ -601,7 +601,7 @@ public class NativeBCPKIXOCSPTest
 
 		assertNativeOCSPFailure(rejectedRequest, 0, false);
 		assertTrue(rejectedRequest.getPrimaryError().getCause() instanceof
-				OCSPHTTPException);
+				HTTPException);
 		assertTrue(independentRequest.toString(), independentRequest.isValid());
 		assertThat(queries.get(), is(2));
 	}
@@ -752,7 +752,7 @@ public class NativeBCPKIXOCSPTest
 
 		assertNativeOCSPFailure(result, 0, false);
 		assertTrue(result.getPrimaryError().getCause() instanceof
-				OCSPResponseDecodingException);
+				ResponseDecodingException);
 		assertThat(queries.get(), is(1));
 	}
 
@@ -893,7 +893,7 @@ public class NativeBCPKIXOCSPTest
 
 		assertNativeOCSPFailure(result, 0, false);
 		assertTrue(result.getPrimaryError().getCause() instanceof
-				OCSPResponseDecodingException);
+				ResponseDecodingException);
 		assertThat(queries.get(), is(1));
 	}
 
@@ -1073,7 +1073,7 @@ public class NativeBCPKIXOCSPTest
 
 		assertNativeOCSPFailure(result, 0, false);
 		assertTrue(result.getPrimaryError().getCause() instanceof
-				OCSPResponseDecodingException);
+				ResponseDecodingException);
 		assertThat(malformedQueries.get(), is(1));
 		assertThat(goodQueries.get(), is(0));
 	}

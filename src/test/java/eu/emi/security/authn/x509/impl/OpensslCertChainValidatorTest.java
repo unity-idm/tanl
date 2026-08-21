@@ -399,6 +399,35 @@ public class OpensslCertChainValidatorTest
 	}
 
 	@Test
+	public void shouldRejectUnsupportedOCSPTransportAsNativeInput()
+			throws Exception {
+		CA rootCA = given(aCertificateAuthority()
+				.selfSigned()
+				.withName("DC=org, DC=example, CN=unsupported OCSP root CA"));
+		given(anOpensslTrustStore().trustingCA(rootCA));
+		OCSPResponder unsupportedResponder = new OCSPResponder(
+				new URL("ftp://127.0.0.1/ocsp"), rootCA.getCertificate());
+
+		given(anOpensslCertChainValidator()
+				.with(OCSPCheckingMode.REQUIRE)
+				.with(unsupportedResponder)
+				.with(CrlCheckingMode.IGNORE)
+				.withUpdateInterval(of(2, MINUTES))
+				.withLazyLoading());
+		X509Certificate serviceCertificate = given(anEEC()
+				.withSubject("DC=org, DC=example, CN=unsupported OCSP host")
+				.signedBy(rootCA));
+
+		ValidationResult result = whenValidating(serviceCertificate);
+
+		assertThat(result.isValid(), is(false));
+		assertThat(result.getPrimaryError().getErrorCode(),
+				is(ValidationErrorCode.INVALID_INPUT));
+		assertThat(result.getPrimaryError().getStage(),
+				is(ValidationStage.INPUT));
+	}
+
+	@Test
 	public void shouldReportNativeOCSPResponseLoadingFailure() throws Exception {
 		CA rootCA = given(aCertificateAuthority()
 				.selfSigned()

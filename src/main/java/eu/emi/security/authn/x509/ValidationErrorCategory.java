@@ -4,9 +4,6 @@
  */
 package eu.emi.security.authn.x509;
 
-import java.io.IOException;
-import java.util.Properties;
-
 /**
  * This enumeration contains general classes of errors that can be signaled 
  * during certificate path validation. This classification is provided
@@ -20,43 +17,39 @@ public enum ValidationErrorCategory
 	INPUT,
 	PATH,
 	CERTIFICATE,
-	REVOCATION,
-
-	/* Legacy reviewer categories retained until native revocation is complete. */
-	GENERAL_INPUT,
-	X509_BASIC,
-	X509_CHAIN,
 	POLICY,
 	NAME_CONSTRAINT,
-	CRL,
-	OCSP,
+	REVOCATION,
 	OTHER;
-	
-	private static Properties p;
 	
 	public static ValidationErrorCategory getErrorCategory(ValidationErrorCode code)
 	{
-		if (p == null)
+		switch (code)
 		{
-			p = new Properties();
-			try
-			{
-				p.load(ValidationErrorCategory.class.getResourceAsStream(
-						"/eu/emi/security/authn/x509/valiadationErrors.properties"));
-			} catch (IOException e)
-			{
-				throw new RuntimeException("Resource with error codes can not be loaded as a class loader resource, probably library packaging error.", e);
-			}
-		}
-
-		String category = p.getProperty(code.name() + ".category");
-		if (category == null)
-			return OTHER;
-		try
-		{
-			return ValidationErrorCategory.valueOf(category);
-		} catch (IllegalArgumentException e)
-		{
+		case INVALID_INPUT:
+			return INPUT;
+		case PATH_BUILDING_FAILED:
+		case NO_TRUST_ANCHOR:
+		case INVALID_NAME_CHAINING:
+		case PATH_TOO_LONG:
+			return PATH;
+		case CERTIFICATE_EXPIRED:
+		case CERTIFICATE_NOT_YET_VALID:
+		case INVALID_SIGNATURE:
+		case ALGORITHM_CONSTRAINED:
+		case INVALID_KEY_USAGE:
+		case NOT_CA:
+		case UNRESOLVED_CRITICAL_EXTENSION:
+			return CERTIFICATE;
+		case INVALID_NAME_CONSTRAINT:
+			return NAME_CONSTRAINT;
+		case INVALID_POLICY:
+			return POLICY;
+		case CERTIFICATE_REVOKED:
+		case UNDETERMINED_REVOCATION_STATUS:
+			return REVOCATION;
+		case PKIX_FAILURE:
+		default:
 			return OTHER;
 		}
 	}

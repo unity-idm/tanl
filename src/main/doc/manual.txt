@@ -248,12 +248,8 @@ validation. Typically the implementation can report the problem to the user, wha
 particularly useful when certificate validation is invoked indirectly (e.g. on SSL
 socket initialization) and actual error is buried deep in the exception stack.
 
-Another, but less common, application of this interface is to influence validation logic.
-Listeners can ignore some of the errors or even change their description. 
-*However this usage of the interface is a very hazardous choice.* 
-The validator always tries to provide a full list of validation errors, 
-but it can not guarantee that all problems are found. Therefore programmer 
-can not be 100% sure that after ignoring one of the errors no other could be found. 
+The listener is notification-only. It can neither suppress a failure nor alter
+the immutable primary error selected by validation.
 
 Registration of the BouncyCastle security provider
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -275,13 +271,13 @@ position on the providers list) and be sure that your modifications will not be 
 Validation errors
 ^^^^^^^^^^^^^^^^^
 
-Library can produce many different errors related to certificate validation. 
-All errors should provide meaningful for human explanation, category and code -
-see +ValidationError+ class documentation for details. The codes are defined 
-in +eu.emi.security.authn.x509.{zwsp}ValidationErrorCode+, however programmers 
-may be also interested in codes' descriptions. Those are available in the
-source repository of the library, in the file: 
-+src/main/resources/eu/emi/security{zwsp}/authn/x509/valiadationErrors.properties+
+An invalid +ValidationResult+ exposes one immutable primary +ValidationError+.
+It contains a stable category, code, validation stage, certificate position
+when known, provider diagnostic text, and the original cause. Applications
+should make decisions using +ValidationErrorCode+ and +ValidationStage+;
+provider messages are diagnostic and are not stable API values. +getErrors()+
+remains as an empty or single-element compatibility view, while
++getPrimaryError()+ returns the error directly.
 
 
 

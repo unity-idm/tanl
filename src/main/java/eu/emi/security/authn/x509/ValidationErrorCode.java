@@ -5,125 +5,39 @@
 package eu.emi.security.authn.x509;
 
 /**
- * This enumeration contains codes of errors that can be signaled 
- * during certificate path validation. This classification is provided
- * to allow applications to have fine grained error handling.
- * <p>
- * This codes are used as keys for getting the messages from the 
- * message bundle 'validationErrors' (defined in a properties file). 
+ * Stable codes for native certificate-path validation failures.
  * 
  * @author K. Benedyczak
  */
 public enum ValidationErrorCode
 {
-	INVALID_INPUT,
-	PATH_BUILDING_FAILED,
-	NO_TRUST_ANCHOR,
-	CERTIFICATE_EXPIRED,
-	CERTIFICATE_NOT_YET_VALID,
-	INVALID_SIGNATURE,
-	ALGORITHM_CONSTRAINED,
-	INVALID_NAME_CHAINING,
-	INVALID_KEY_USAGE,
-	NOT_CA,
-	PATH_TOO_LONG,
-	INVALID_NAME_CONSTRAINT,
-	INVALID_POLICY,
-	UNRESOLVED_CRITICAL_EXTENSION,
-	CERTIFICATE_REVOKED,
-	UNDETERMINED_REVOCATION_STATUS,
-	PKIX_FAILURE,
+	INVALID_INPUT("Invalid certificate input"),
+	PATH_BUILDING_FAILED("Certificate path building failed"),
+	NO_TRUST_ANCHOR("No trusted CA certificate was found for the certificate path"),
+	CERTIFICATE_EXPIRED("Certificate has expired"),
+	CERTIFICATE_NOT_YET_VALID("Certificate is not yet valid"),
+	INVALID_SIGNATURE("Certificate signature is invalid"),
+	ALGORITHM_CONSTRAINED("Certificate uses a constrained cryptographic algorithm"),
+	INVALID_NAME_CHAINING("Certificate issuer and subject names do not chain"),
+	INVALID_KEY_USAGE("Certificate key usage does not permit the required operation"),
+	NOT_CA("Certificate is not permitted to act as a CA"),
+	PATH_TOO_LONG("Certificate path exceeds a path-length constraint"),
+	INVALID_NAME_CONSTRAINT("Certificate violates a name constraint"),
+	INVALID_POLICY("Certificate path does not satisfy the required policy"),
+	UNRESOLVED_CRITICAL_EXTENSION("Certificate contains an unsupported critical extension"),
+	CERTIFICATE_REVOKED("Certificate has been revoked"),
+	UNDETERMINED_REVOCATION_STATUS("Certificate revocation status could not be determined"),
+	PKIX_FAILURE("PKIX certificate validation failed");
 
-	/*
-	 * Legacy reviewer codes remain temporarily for the revocation compatibility
-	 * path. Native validation never emits them, and the native-revocation change
-	 * removes the remaining callers.
-	 */
-	unknown,
-	unknownMsg,
-	
-	inputError,
-	emptyCertPath,
-	invalidCertificatePath,
-	
-	noIssuerPublicKey,
-	noBasicConstraints,
-	pathLenghtExtended,
-	conflictingTrustAnchors,
-	noTrustAnchorFound,
-	trustButInvalidCert,
-	signatureNotVerified,
-	certificateNotYetValid,
-	certificateExpired,
-	noCACert,
-	noCertSign,
-	unknownCriticalExt,
-	certWrongIssuer,
-	errorProcesingBC,
-	QcStatementExtError,
-	certPathCheckerError,
-	criticalExtensionError,
-	unknownCriticalExts,
-	pubKeyError,
-	processLengthConstError,
-	rootKeyIsValidButNotATrustAnchor,
-	trustAnchorIssuerError,
-	trustDNInvalid,
-	trustKeyUsage,
-	trustPubKeyError,
+	private final String description;
 
-	explicitPolicy,
-	invalidPolicyMapping,
-	invalidPolicy,
-	noValidPolicyTree,
-	policyConstExtError,
-	policyExtError,
-	policyInhibitExtError,
-	policyMapExtError,
-	policyQualifierError,
+	ValidationErrorCode(String description)
+	{
+		this.description = description;
+	}
 
-	excludedDN,
-	excludedEmail,
-	excludedIP,
-	ncExtError,
-	ncSubjectNameError,
-	notPermittedDN,
-	notPermittedEmail,
-	notPermittedIP,
-	subjAltNameExtError,
-	
-	certRevoked,
-	noBaseCRL,
-	noValidCrlFound,
-	noCrlForExpiredCert,
-	crlVerifyFailed,
-	distrPtExtError,
-	crlAuthInfoAccError,
-	crlBCExtError,
-	crlDistPtExtError,
-	crlExtractionError,
-	crlIssuerException,
-	crlNoIssuerPublicKey,
-	crlOnlyAttrCert,
-	crlOnlyCaCert,
-	crlOnlyUserCert,
-	crlReasonExtError,
-	onlineCRLWrongCA,
-	onlineInvalidCRL,
-	noCrlInCertstore,
-	noCrlSigningPermited,
-	loadCrlDistPointError,
-	localInvalidCRL,
-	crlUnknownCritExt,
-	crlNoIssuerForDP,
-	crlNoIssuerAndDP,
-	crlIDPAndDPMismatch,
-	crlDeltaProblem,
-	crlAKIExtError,
-	
-	ocspCertRevoked,
-	ocspNoResponder,
-	ocspResponderQueryError,
-	ocspResponseInvalid,
-	ocspOtherError,
+	String getDescription()
+	{
+		return description;
+	}
 }
