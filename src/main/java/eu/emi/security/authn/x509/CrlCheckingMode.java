@@ -23,12 +23,20 @@ public enum CrlCheckingMode
 	REQUIRE,
 	
 	/**
-	 * If a CRL for CA which issued a certificate being validated
-	 * is present and valid then the certificate must not be listed on the CRL.
-	 * If the CRL is present but it is outdated (or anyhow else corrupted) then the validation fails. 
-	 * If CRL is missing then validation is successful.
+	 * Legacy name for optional, present-but-enforced CRL checking.
+	 * @deprecated Use {@link #IF_PRESENT}. This value is retained as a
+	 * compatibility alias with the same behavior.
 	 */
+	@Deprecated
 	IF_VALID,
+
+	/**
+	 * If a potentially applicable parsed CRL is present, require strict native
+	 * CRL validation. If no CRL issued by the certificate issuer or an explicit
+	 * distribution-point CRL issuer is present, the revocation status is left
+	 * undetermined without failing validation.
+	 */
+	IF_PRESENT,
 
 	/**
 	 * CRL is not checked even if it exists.

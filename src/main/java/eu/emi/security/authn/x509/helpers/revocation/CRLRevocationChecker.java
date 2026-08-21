@@ -43,6 +43,7 @@ public class CRLRevocationChecker implements RevocationChecker
 	}
 
 	@Override
+	@SuppressWarnings("deprecation")
 	public RevocationStatus checkRevocation(X509Certificate certitifcate,
 			X509Certificate issuer) throws SimpleValidationErrorException
 	{
@@ -54,8 +55,9 @@ public class CRLRevocationChecker implements RevocationChecker
 				issuer, workingPublicKey, certificates, jcaHelper);
 		} catch (SimpleValidationErrorException e)
 		{
-			if (e.getCode() == ValidationErrorCode.noValidCrlFound && 
-					checkingMode == CrlCheckingMode.IF_VALID)
+			if (e.getCode() == ValidationErrorCode.noValidCrlFound &&
+					(checkingMode == CrlCheckingMode.IF_PRESENT ||
+					 checkingMode == CrlCheckingMode.IF_VALID))
 				return RevocationStatus.unknown;
 			throw e;
 		}

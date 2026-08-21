@@ -120,7 +120,7 @@ public class DirectoryCertChainValidator extends PlainCRLValidator
 		this(Collections.singletonList(trustedLocation), Encoding.PEM,
 			3600000, 15000, diskCache, 
 			new ValidatorParamsExt(
-				new RevocationParametersExt(CrlCheckingMode.IF_VALID,
+				new RevocationParametersExt(CrlCheckingMode.IF_PRESENT,
 						new CRLParameters(Collections.singletonList(crlLocation), 
 						3600000, 15000, diskCache), 
 						new OCSPParametes())));
@@ -181,8 +181,3 @@ public class DirectoryCertChainValidator extends PlainCRLValidator
 		trustStore.dispose();
 	}
 }
-
-
-
-
-

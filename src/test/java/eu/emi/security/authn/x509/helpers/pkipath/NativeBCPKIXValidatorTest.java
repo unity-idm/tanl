@@ -340,6 +340,133 @@ public class NativeBCPKIXValidatorTest
 		assertNotNull(error.getProviderMessage());
 	}
 
+	@Test
+	public void shouldAcceptMissingCRLsWhenCheckingIfPresent() throws Exception
+	{
+		ValidationResult arrayResult = validator.validateWithCRLsIfPresent(
+				new X509Certificate[] {target, intermediate, root}, anchors,
+				crlStore());
+		ValidationResult pathResult = validator.validateWithCRLsIfPresent(
+				path(target, intermediate, root), anchors, crlStore());
+
+		assertTrue(arrayResult.toString(), arrayResult.isValid());
+		assertTrue(pathResult.toString(), pathResult.isValid());
+		assertThat(arrayResult.getValidChain(), contains(target, intermediate, root));
+		assertThat(pathResult.getValidChain(), contains(target, intermediate, root));
+	}
+
+	@Test
+	public void shouldValidateOnlyEdgesWithPresentCRLs() throws Exception
+	{
+		ValidationResult result = validator.validateWithCRLsIfPresent(
+				new X509Certificate[] {target, intermediate, root}, anchors,
+				crlStore("GoodCACRL"));
+
+		assertTrue(result.toString(), result.isValid());
+		assertThat(result.getValidChain(), contains(target, intermediate, root));
+	}
+
+	@Test
+	public void shouldRejectRevokedEdgeWhenAnotherCRLIsMissing() throws Exception
+	{
+		X509Certificate revoked = load("InvalidRevokedEETest3EE");
+
+		ValidationResult result = validator.validateWithCRLsIfPresent(
+				new X509Certificate[] {revoked, intermediate, root}, anchors,
+				crlStore("GoodCACRL"));
+
+		assertFalse(result.toString(), result.isValid());
+		assertThat(result.getPrimaryError().getStage(),
+				is(ValidationStage.REVOCATION));
+		assertThat(result.getPrimaryError().getPosition(), is(0));
+		assertSame(revoked, result.getPrimaryError().getCertificate());
+	}
+
+	@Test
+	public void shouldEnforceExpiredCRLWhenCheckingIfPresent() throws Exception
+	{
+		X509Certificate expiredCrlTarget = load("InvalidOldCRLnextUpdateTest11EE");
+		X509Certificate expiredCrlIssuer = load("OldCRLnextUpdateCACert");
+
+		ValidationResult result = validator.validateWithCRLsIfPresent(
+				new X509Certificate[] {expiredCrlTarget, expiredCrlIssuer, root},
+				anchors, crlStore("OldCRLnextUpdateCACRL"));
+
+		assertFalse(result.toString(), result.isValid());
+		assertThat(result.getPrimaryError().getStage(),
+				is(ValidationStage.REVOCATION));
+		assertThat(result.getPrimaryError().getPosition(), is(0));
+	}
+
+	@Test
+	public void shouldEnforceBadlySignedCRLWhenCheckingIfPresent() throws Exception
+	{
+		X509Certificate badCrlTarget = load("InvalidBadCRLSignatureTest4EE");
+		X509Certificate badCrlIssuer = load("BadCRLSignatureCACert");
+
+		ValidationResult result = validator.validateWithCRLsIfPresent(
+				path(badCrlTarget, badCrlIssuer, root), anchors,
+				crlStore("BadCRLSignatureCACRL"));
+
+		assertFalse(result.toString(), result.isValid());
+		assertThat(result.getPrimaryError().getStage(),
+				is(ValidationStage.REVOCATION));
+		assertThat(result.getPrimaryError().getPosition(), is(0));
+	}
+
+	@Test
+	public void shouldIgnoreCRLsFromUnrelatedIssuers() throws Exception
+	{
+		ValidationResult result = validator.validateWithCRLsIfPresent(
+				new X509Certificate[] {target, intermediate, root}, anchors,
+				crlStore("LongSerialNumberCACRL"));
+
+		assertTrue(result.toString(), result.isValid());
+	}
+
+	@Test
+	public void shouldEnforceDistributionPointCRLWhenPresent() throws Exception
+	{
+		X509Certificate certificate = load("ValiddistributionPointTest1EE");
+		X509Certificate issuer = load("distributionPoint1CACert");
+
+		ValidationResult result = validator.validateWithCRLsIfPresent(
+				new X509Certificate[] {certificate, issuer, root}, anchors,
+				crlStore("distributionPoint1CACRL"));
+
+		assertTrue(result.toString(), result.isValid());
+		assertThat(result.getValidChain(), contains(certificate, issuer, root));
+	}
+
+	@Test
+	public void shouldEnforceBaseAndDeltaCRLsWhenPresent() throws Exception
+	{
+		X509Certificate certificate = load("ValiddeltaCRLTest2EE");
+		X509Certificate issuer = load("deltaCRLCA1Cert");
+
+		ValidationResult result = validator.validateWithCRLsIfPresent(
+				new X509Certificate[] {certificate, issuer, root}, anchors,
+				crlStore("deltaCRLCA1CRL", "deltaCRLCA1deltaCRL"));
+
+		assertTrue(result.toString(), result.isValid());
+		assertThat(result.getValidChain(), contains(certificate, issuer, root));
+	}
+
+	@Test
+	public void shouldEnforceExplicitIndirectCRLIssuerWhenPresent() throws Exception
+	{
+		X509Certificate certificate = load("ValidcRLIssuerTest30EE");
+		X509Certificate crlIssuer = load("indirectCRLCA4cRLIssuerCert");
+		X509Certificate issuer = load("indirectCRLCA4Cert");
+
+		ValidationResult result = validator.validateWithCRLsIfPresent(
+				new X509Certificate[] {certificate, crlIssuer, issuer, root}, anchors,
+				crlStore("indirectCRLCA4cRLIssuerCRL"));
+
+		assertTrue(result.toString(), result.isValid());
+		assertThat(result.getValidChain(), contains(certificate, issuer, root));
+	}
+
 	private CertPath path(X509Certificate... certificates) throws Exception
 	{
 		return CertificateFactory.getInstance("X.509", BouncyCastleProvider.PROVIDER_NAME)
