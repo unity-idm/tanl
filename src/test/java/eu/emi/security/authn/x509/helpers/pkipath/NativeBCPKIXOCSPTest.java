@@ -14,7 +14,7 @@ import static org.junit.Assert.assertTrue;
 
 import java.math.BigInteger;
 import java.net.InetSocketAddress;
-import java.net.URL;
+import java.net.URI;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.PrivateKey;
@@ -28,11 +28,15 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Date;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.bouncycastle.asn1.x500.X500Name;
+import org.bouncycastle.asn1.x509.AccessDescription;
+import org.bouncycastle.asn1.x509.AuthorityInformationAccess;
 import org.bouncycastle.asn1.x509.BasicConstraints;
 import org.bouncycastle.asn1.x509.ExtendedKeyUsage;
 import org.bouncycastle.asn1.x509.Extension;
+import org.bouncycastle.asn1.x509.GeneralName;
 import org.bouncycastle.asn1.x509.KeyPurposeId;
 import org.bouncycastle.asn1.x509.KeyUsage;
 import org.bouncycastle.cert.X509CertificateHolder;
@@ -137,6 +141,83 @@ public class NativeBCPKIXOCSPTest
 	}
 
 	@Test
+	public void shouldDiscoverOneResponderForEachCertificateInThePath() throws Exception
+	{
+		responderServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+		URI intermediateResponder = responderURI("/intermediate");
+		URI rootResponder = responderURI("/root");
+		KeyPair intermediateKeyPair = keyPair();
+		X509Certificate intermediate = certificate("CN=Native OCSP Intermediate",
+				"CN=Native OCSP Root", BigInteger.valueOf(10),
+				intermediateKeyPair.getPublic(), rootKeyPair.getPrivate(), true,
+				false, rootResponder);
+		KeyPair aiaTargetKeyPair = keyPair();
+		X509Certificate aiaTarget = certificate("CN=Native OCSP AIA Target",
+				"CN=Native OCSP Intermediate", BigInteger.valueOf(11),
+				aiaTargetKeyPair.getPublic(), intermediateKeyPair.getPrivate(), false,
+				false, intermediateResponder);
+		Date nextUpdate = new Date(System.currentTimeMillis() + 10 * MINUTE);
+		AtomicInteger intermediateQueries = new AtomicInteger();
+		AtomicInteger rootQueries = new AtomicInteger();
+		addResponse("/intermediate", response(aiaTarget, intermediate, null,
+				intermediateKeyPair.getPrivate(), intermediateKeyPair.getPublic(),
+				nextUpdate), intermediateQueries);
+		addResponse("/root", response(intermediate, root, null,
+				rootKeyPair.getPrivate(), rootKeyPair.getPublic(), nextUpdate), rootQueries);
+		responderServer.start();
+
+		ValidationResult arrayResult = validator.validateWithOCSPFromAIA(
+				new X509Certificate[] {aiaTarget, root, intermediate}, anchors);
+		ValidationResult pathResult = validator.validateWithOCSPFromAIA(
+				path(aiaTarget, intermediate, root), anchors);
+
+		assertTrue(arrayResult.toString(), arrayResult.isValid());
+		assertTrue(pathResult.toString(), pathResult.isValid());
+		assertThat(arrayResult.getValidChain(), contains(aiaTarget, intermediate, root));
+		assertThat(pathResult.getValidChain(), contains(aiaTarget, intermediate, root));
+		assertTrue(intermediateQueries.get() > 0);
+		assertTrue(rootQueries.get() > 0);
+	}
+
+	@Test
+	public void shouldReportDiscoveredResponderFailureAtOriginalPathPosition()
+			throws Exception
+	{
+		responderServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+		URI intermediateResponder = responderURI("/intermediate-revoked");
+		URI rootResponder = responderURI("/root-revoked");
+		KeyPair intermediateKeyPair = keyPair();
+		X509Certificate intermediate = certificate("CN=Revoked OCSP Intermediate",
+				"CN=Native OCSP Root", BigInteger.valueOf(20),
+				intermediateKeyPair.getPublic(), rootKeyPair.getPrivate(), true,
+				false, rootResponder);
+		X509Certificate aiaTarget = certificate("CN=Child of Revoked Intermediate",
+				"CN=Revoked OCSP Intermediate", BigInteger.valueOf(21),
+				keyPair().getPublic(), intermediateKeyPair.getPrivate(), false,
+				false, intermediateResponder);
+		Date nextUpdate = new Date(System.currentTimeMillis() + 10 * MINUTE);
+		addResponse("/intermediate-revoked", response(aiaTarget, intermediate, null,
+				intermediateKeyPair.getPrivate(), intermediateKeyPair.getPublic(),
+				nextUpdate), new AtomicInteger());
+		addResponse("/root-revoked", response(intermediate, root,
+				new RevokedStatus(new Date(System.currentTimeMillis() - MINUTE), 1),
+				rootKeyPair.getPrivate(), rootKeyPair.getPublic(), nextUpdate),
+				new AtomicInteger());
+		responderServer.start();
+
+		ValidationResult result = validator.validateWithOCSPFromAIA(
+				new X509Certificate[] {aiaTarget, intermediate, root}, anchors);
+
+		assertFalse(result.toString(), result.isValid());
+		ValidationError error = result.getPrimaryError();
+		assertThat(error.getErrorCode(), is(ValidationErrorCode.PKIX_FAILURE));
+		assertThat(error.getStage(), is(ValidationStage.REVOCATION));
+		assertThat(error.getPosition(), is(1));
+		assertSame(intermediate, error.getCertificate());
+		assertTrue(error.getCause() instanceof CertPathValidatorException);
+	}
+
+	@Test
 	public void shouldRejectRevokedResponse() throws Exception
 	{
 		CertificateStatus revoked = new RevokedStatus(
@@ -219,9 +300,18 @@ public class NativeBCPKIXOCSPTest
 			X509Certificate responderCertificate) throws Exception
 	{
 		responderServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-		responderServer.createContext("/", exchange -> {
+		addResponse("/", response, new AtomicInteger());
+		responderServer.start();
+		return new OCSPResponder(responderURI("/").toURL(), responderCertificate);
+	}
+
+	private void addResponse(String path, final byte[] response,
+			final AtomicInteger queries)
+	{
+		responderServer.createContext(path, exchange -> {
 			try
 			{
+				queries.incrementAndGet();
 				while (exchange.getRequestBody().read() >= 0)
 				{
 					// Consume the complete OCSP request before responding.
@@ -234,10 +324,12 @@ public class NativeBCPKIXOCSPTest
 				exchange.close();
 			}
 		});
-		responderServer.start();
-		URL address = new URL("http://127.0.0.1:" +
-				responderServer.getAddress().getPort() + "/");
-		return new OCSPResponder(address, responderCertificate);
+	}
+
+	private URI responderURI(String path) throws Exception
+	{
+		return new URI("http://127.0.0.1:" +
+				responderServer.getAddress().getPort() + path);
 	}
 
 	private byte[] response(CertificateStatus status, PrivateKey signingKey,
@@ -249,10 +341,19 @@ public class NativeBCPKIXOCSPTest
 	private byte[] response(CertificateStatus status, PrivateKey signingKey,
 			PublicKey responderPublicKey, Date nextUpdate) throws Exception
 	{
+		return response(target, root, status, signingKey, responderPublicKey,
+				nextUpdate);
+	}
+
+	private byte[] response(X509Certificate certificate,
+			X509Certificate issuer, CertificateStatus status, PrivateKey signingKey,
+			PublicKey responderPublicKey, Date nextUpdate) throws Exception
+	{
 		DigestCalculator idDigest = new JcaDigestCalculatorProviderBuilder()
 				.setProvider(BC).build().get(CertificateID.HASH_SHA1);
 		CertificateID id = new CertificateID(idDigest,
-				new X509CertificateHolder(root.getEncoded()), target.getSerialNumber());
+				new X509CertificateHolder(issuer.getEncoded()),
+				certificate.getSerialNumber());
 		DigestCalculator responderIdDigest = new JcaDigestCalculatorProviderBuilder()
 				.setProvider(BC).build().get(CertificateID.HASH_SHA1);
 		BasicOCSPRespBuilder builder = new JcaBasicOCSPRespBuilder(
@@ -271,12 +372,21 @@ public class NativeBCPKIXOCSPTest
 			BigInteger serial, PublicKey publicKey,
 			PrivateKey signingKey, boolean ca) throws Exception
 	{
-		return certificate(subject, issuer, serial, publicKey, signingKey, ca, false);
+		return certificate(subject, issuer, serial, publicKey, signingKey, ca,
+				false, null);
 	}
 
 	private X509Certificate certificate(String subject, String issuer,
 			BigInteger serial, PublicKey publicKey,
 			PrivateKey signingKey, boolean ca, boolean ocspSigning) throws Exception
+	{
+		return certificate(subject, issuer, serial, publicKey, signingKey, ca,
+				ocspSigning, null);
+	}
+
+	private X509Certificate certificate(String subject, String issuer,
+			BigInteger serial, PublicKey publicKey, PrivateKey signingKey,
+			boolean ca, boolean ocspSigning, URI ocspResponder) throws Exception
 	{
 		Date notBefore = new Date(System.currentTimeMillis() - 10 * MINUTE);
 		Date notAfter = new Date(System.currentTimeMillis() + 60 * MINUTE);
@@ -291,6 +401,12 @@ public class NativeBCPKIXOCSPTest
 		if (ocspSigning)
 			builder.addExtension(Extension.extendedKeyUsage, false,
 					new ExtendedKeyUsage(KeyPurposeId.id_kp_OCSPSigning));
+		if (ocspResponder != null)
+			builder.addExtension(Extension.authorityInfoAccess, false,
+					new AuthorityInformationAccess(new AccessDescription(
+							AccessDescription.id_ad_ocsp,
+							new GeneralName(GeneralName.uniformResourceIdentifier,
+									ocspResponder.toASCIIString()))));
 		ContentSigner signer = new JcaContentSignerBuilder("SHA256withRSA")
 				.setProvider(BC).build(signingKey);
 		return new JcaX509CertificateConverter().setProvider(BC)
