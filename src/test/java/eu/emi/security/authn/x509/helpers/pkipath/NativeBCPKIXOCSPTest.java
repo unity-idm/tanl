@@ -15,6 +15,7 @@ import static org.junit.Assert.assertTrue;
 import java.math.BigInteger;
 import java.net.InetSocketAddress;
 import java.net.URI;
+import java.net.SocketTimeoutException;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.PrivateKey;
@@ -28,6 +29,8 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Date;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.bouncycastle.asn1.x500.X500Name;
@@ -121,6 +124,70 @@ public class NativeBCPKIXOCSPTest
 	}
 
 	@Test
+	public void shouldValidatePrefetchedResponseForArrayAndAssertedPath() throws Exception
+	{
+		OCSPResponder responder = startResponder(response(null, rootKeyPair.getPrivate(),
+				new Date(System.currentTimeMillis() + 10 * MINUTE)));
+
+		ValidationResult arrayResult = validator.validateWithOCSP(
+				new X509Certificate[] {target, root}, anchors, responder, 1000);
+		ValidationResult pathResult = validator.validateWithOCSP(
+				path(target, root), anchors, responder, 1000);
+
+		assertTrue(arrayResult.toString(), arrayResult.isValid());
+		assertTrue(pathResult.toString(), pathResult.isValid());
+		assertThat(arrayResult.getValidChain(), contains(target, root));
+		assertThat(pathResult.getValidChain(), contains(target, root));
+	}
+
+	@Test
+	public void shouldApplyTimeoutWhileFetchingResponse() throws Exception
+	{
+		final CountDownLatch requestReceived = new CountDownLatch(1);
+		final CountDownLatch releaseResponse = new CountDownLatch(1);
+		responderServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+		responderServer.createContext("/", exchange -> {
+			try
+			{
+				while (exchange.getRequestBody().read() >= 0)
+				{
+					// Consume the complete OCSP request before blocking the response.
+				}
+				requestReceived.countDown();
+				releaseResponse.await(5, TimeUnit.SECONDS);
+			} catch (InterruptedException e)
+			{
+				Thread.currentThread().interrupt();
+			} finally
+			{
+				exchange.close();
+			}
+		});
+		responderServer.start();
+		OCSPResponder responder = new OCSPResponder(responderURI("/").toURL(), root);
+
+		ValidationResult result;
+		try
+		{
+			result = validator.validateWithOCSP(
+					new X509Certificate[] {target, root}, anchors, responder, 100);
+		} finally
+		{
+			releaseResponse.countDown();
+		}
+
+		assertTrue("The responder did not receive the request",
+				requestReceived.await(1, TimeUnit.SECONDS));
+		assertFalse(result.toString(), result.isValid());
+		ValidationError error = result.getPrimaryError();
+		assertThat(error.getErrorCode(), is(ValidationErrorCode.PKIX_FAILURE));
+		assertThat(error.getStage(), is(ValidationStage.REVOCATION));
+		assertThat(error.getPosition(), is(0));
+		assertSame(target, error.getCertificate());
+		assertTrue(error.getCause() instanceof SocketTimeoutException);
+	}
+
+	@Test
 	public void shouldTrustConfiguredDelegatedResponderCertificate() throws Exception
 	{
 		KeyPair responderKeyPair = keyPair();
@@ -135,9 +202,15 @@ public class NativeBCPKIXOCSPTest
 		ValidationResult result = validator.validateWithOCSP(
 				new X509Certificate[] {target, root}, anchors,
 				startResponder(goodResponse, responderCertificate));
+		ValidationResult prefetchedResult = validator.validateWithOCSP(
+				new X509Certificate[] {target, root}, anchors,
+				new OCSPResponder(responderURI("/").toURL(), responderCertificate),
+				1000);
 
 		assertTrue(result.toString(), result.isValid());
+		assertTrue(prefetchedResult.toString(), prefetchedResult.isValid());
 		assertThat(result.getValidChain(), contains(target, root));
+		assertThat(prefetchedResult.getValidChain(), contains(target, root));
 	}
 
 	@Test
@@ -170,11 +243,21 @@ public class NativeBCPKIXOCSPTest
 				new X509Certificate[] {aiaTarget, root, intermediate}, anchors);
 		ValidationResult pathResult = validator.validateWithOCSPFromAIA(
 				path(aiaTarget, intermediate, root), anchors);
+		ValidationResult prefetchedArrayResult = validator.validateWithOCSPFromAIA(
+				new X509Certificate[] {aiaTarget, root, intermediate}, anchors, 1000);
+		ValidationResult prefetchedPathResult = validator.validateWithOCSPFromAIA(
+				path(aiaTarget, intermediate, root), anchors, 1000);
 
 		assertTrue(arrayResult.toString(), arrayResult.isValid());
 		assertTrue(pathResult.toString(), pathResult.isValid());
+		assertTrue(prefetchedArrayResult.toString(), prefetchedArrayResult.isValid());
+		assertTrue(prefetchedPathResult.toString(), prefetchedPathResult.isValid());
 		assertThat(arrayResult.getValidChain(), contains(aiaTarget, intermediate, root));
 		assertThat(pathResult.getValidChain(), contains(aiaTarget, intermediate, root));
+		assertThat(prefetchedArrayResult.getValidChain(),
+				contains(aiaTarget, intermediate, root));
+		assertThat(prefetchedPathResult.getValidChain(),
+				contains(aiaTarget, intermediate, root));
 		assertTrue(intermediateQueries.get() > 0);
 		assertTrue(rootQueries.get() > 0);
 	}
@@ -260,6 +343,18 @@ public class NativeBCPKIXOCSPTest
 	{
 		ValidationResult result = validate(response(null, keyPair().getPrivate(),
 				new Date(System.currentTimeMillis() + 10 * MINUTE)));
+
+		assertNativeOCSPFailure(result);
+	}
+
+	@Test
+	public void shouldRejectBadlySignedPrefetchedResponse() throws Exception
+	{
+		byte[] response = response(null, keyPair().getPrivate(),
+				new Date(System.currentTimeMillis() + 10 * MINUTE));
+		ValidationResult result = validator.validateWithOCSP(
+				new X509Certificate[] {target, root}, anchors,
+				startResponder(response), 1000);
 
 		assertNativeOCSPFailure(result);
 	}
