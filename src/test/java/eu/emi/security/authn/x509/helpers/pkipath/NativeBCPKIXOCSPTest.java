@@ -27,8 +27,11 @@ import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.security.cert.CertPath;
 import java.security.cert.CertPathValidatorException;
+import java.security.cert.CertStore;
 import java.security.cert.CertificateFactory;
+import java.security.cert.CollectionCertStoreParameters;
 import java.security.cert.TrustAnchor;
+import java.security.cert.X509CRL;
 import java.security.cert.X509Certificate;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -53,7 +56,10 @@ import org.bouncycastle.asn1.x509.GeneralName;
 import org.bouncycastle.asn1.x509.KeyPurposeId;
 import org.bouncycastle.asn1.x509.KeyUsage;
 import org.bouncycastle.cert.X509CertificateHolder;
+import org.bouncycastle.cert.X509v2CRLBuilder;
+import org.bouncycastle.cert.jcajce.JcaX509CRLConverter;
 import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter;
+import org.bouncycastle.cert.jcajce.JcaX509v2CRLBuilder;
 import org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder;
 import org.bouncycastle.cert.ocsp.BasicOCSPResp;
 import org.bouncycastle.cert.ocsp.BasicOCSPRespBuilder;
@@ -78,7 +84,9 @@ import org.junit.rules.TemporaryFolder;
 
 import com.sun.net.httpserver.HttpServer;
 
+import eu.emi.security.authn.x509.OCSPCheckingMode;
 import eu.emi.security.authn.x509.OCSPResponder;
+import eu.emi.security.authn.x509.RevocationParameters.RevocationCheckingOrder;
 import eu.emi.security.authn.x509.StoreUpdateListener;
 import eu.emi.security.authn.x509.StoreUpdateListener.Severity;
 import eu.emi.security.authn.x509.ValidationError;
@@ -779,6 +787,135 @@ public class NativeBCPKIXOCSPTest
 	}
 
 	@Test
+	public void shouldFallbackFromUnavailableOptionalOCSPToCRL()
+			throws Exception
+	{
+		responderServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+		AtomicInteger queries = new AtomicInteger();
+		addUnavailableResponse("/policy-unavailable", queries);
+		responderServer.start();
+		OCSPResponder[] responders = {new OCSPResponder(
+				responderURI("/policy-unavailable").toURL(), root)};
+
+		ValidationResult arrayResult = validateCombined(crlStore(),
+				OCSPCheckingMode.IF_AVAILABLE, responders, false,
+				RevocationCheckingOrder.OCSP_CRL);
+		ValidationResult pathResult = validateCombined(path(target, root), crlStore(),
+				OCSPCheckingMode.IF_AVAILABLE, responders, false,
+				RevocationCheckingOrder.OCSP_CRL);
+
+		assertTrue(arrayResult.toString(), arrayResult.isValid());
+		assertTrue(pathResult.toString(), pathResult.isValid());
+		assertThat(arrayResult.getValidChain(), contains(target, root));
+		assertThat(pathResult.getValidChain(), contains(target, root));
+		assertThat(queries.get(), is(2));
+	}
+
+	@Test
+	public void shouldNotTreatUnavailableOptionalOCSPAsVerification()
+			throws Exception
+	{
+		ValidationResult result = validateCombined(crlStore(target),
+				OCSPCheckingMode.IF_AVAILABLE, new OCSPResponder[0], false,
+				RevocationCheckingOrder.OCSP_CRL);
+
+		assertFalse(result.toString(), result.isValid());
+		assertThat(result.getPrimaryError().getStage(),
+				is(ValidationStage.REVOCATION));
+		assertThat(result.getPrimaryError().getPosition(), is(0));
+		assertSame(target, result.getPrimaryError().getCertificate());
+	}
+
+	@Test
+	public void shouldShortCircuitAfterVerifiedCRLUnlessAllAreRequired()
+			throws Exception
+	{
+		responderServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+		AtomicInteger queries = new AtomicInteger();
+		addResponse("/policy-after-crl", new byte[] {1, 2, 3, 4}, queries);
+		responderServer.start();
+		OCSPResponder[] responders = {new OCSPResponder(
+				responderURI("/policy-after-crl").toURL(), root)};
+
+		ValidationResult shortCircuited = validateCombined(crlStore(),
+				OCSPCheckingMode.IF_AVAILABLE, responders, false,
+				RevocationCheckingOrder.CRL_OCSP);
+		ValidationResult requireAll = validateCombined(path(target, root), crlStore(),
+				OCSPCheckingMode.IF_AVAILABLE, responders, true,
+				RevocationCheckingOrder.CRL_OCSP);
+
+		assertTrue(shortCircuited.toString(), shortCircuited.isValid());
+		assertNativeOCSPFailure(requireAll, 0, false);
+		assertThat(queries.get(), is(1));
+	}
+
+	@Test
+	public void shouldShortCircuitAfterVerifiedOCSPUnlessAllAreRequired()
+			throws Exception
+	{
+		responderServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+		AtomicInteger queries = new AtomicInteger();
+		addResponse("/policy-before-crl", response(null, rootKeyPair.getPrivate(),
+				new Date(System.currentTimeMillis() + 10 * MINUTE)), queries);
+		responderServer.start();
+		OCSPResponder[] responders = {new OCSPResponder(
+				responderURI("/policy-before-crl").toURL(), root)};
+
+		ValidationResult shortCircuited = validateCombined(emptyCRLStore(),
+				OCSPCheckingMode.REQUIRE, responders, false,
+				RevocationCheckingOrder.OCSP_CRL);
+		ValidationResult requireAll = validateCombined(path(target, root),
+				emptyCRLStore(), OCSPCheckingMode.REQUIRE, responders, true,
+				RevocationCheckingOrder.OCSP_CRL);
+
+		assertTrue(shortCircuited.toString(), shortCircuited.isValid());
+		assertFalse(requireAll.toString(), requireAll.isValid());
+		assertThat(requireAll.getPrimaryError().getStage(),
+				is(ValidationStage.REVOCATION));
+		assertThat(queries.get(), is(2));
+	}
+
+	@Test
+	public void shouldNotFallbackFromReceivedInvalidOCSPToGoodCRL()
+			throws Exception
+	{
+		responderServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+		AtomicInteger queries = new AtomicInteger();
+		addResponse("/policy-malformed", new byte[] {1, 2, 3, 4}, queries);
+		responderServer.start();
+		OCSPResponder[] responders = {new OCSPResponder(
+				responderURI("/policy-malformed").toURL(), root)};
+
+		ValidationResult result = validateCombined(crlStore(),
+				OCSPCheckingMode.IF_AVAILABLE, responders, false,
+				RevocationCheckingOrder.OCSP_CRL);
+
+		assertNativeOCSPFailure(result, 0, false);
+		assertTrue(result.getPrimaryError().getCause() instanceof
+				OCSPResponseDecodingException);
+		assertThat(queries.get(), is(1));
+	}
+
+	@Test
+	public void shouldNotFallbackFromUnavailableRequiredOCSPToGoodCRL()
+			throws Exception
+	{
+		responderServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+		AtomicInteger queries = new AtomicInteger();
+		addUnavailableResponse("/policy-required", queries);
+		responderServer.start();
+		OCSPResponder[] responders = {new OCSPResponder(
+				responderURI("/policy-required").toURL(), root)};
+
+		ValidationResult result = validateCombined(crlStore(),
+				OCSPCheckingMode.REQUIRE, responders, false,
+				RevocationCheckingOrder.OCSP_CRL);
+
+		assertNativeOCSPFailure(result, 0, false);
+		assertThat(queries.get(), is(1));
+	}
+
+	@Test
 	public void shouldNotShareTransportFailuresBetweenResponders() throws Exception
 	{
 		responderServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
@@ -996,6 +1133,44 @@ public class NativeBCPKIXOCSPTest
 		return validator.validateWithOCSP(new X509Certificate[] {target, root},
 				anchors, startNonceResponder(reply, new AtomicInteger(),
 						new ArrayList<byte[]>()), 1000, 60, null, true);
+	}
+
+	private ValidationResult validateCombined(CertStore crls,
+			OCSPCheckingMode ocspMode, OCSPResponder[] responders,
+			boolean useAllEnabled, RevocationCheckingOrder order) throws Exception
+	{
+		return validator.validateWithCRLsAndOCSP(
+				new X509Certificate[] {target, root}, anchors, crls, ocspMode,
+				responders, true, 1000, -1, null, false, useAllEnabled, order);
+	}
+
+	private ValidationResult validateCombined(CertPath certPath, CertStore crls,
+			OCSPCheckingMode ocspMode, OCSPResponder[] responders,
+			boolean useAllEnabled, RevocationCheckingOrder order) throws Exception
+	{
+		return validator.validateWithCRLsAndOCSP(certPath, anchors, crls, ocspMode,
+				responders, true, 1000, -1, null, false, useAllEnabled, order);
+	}
+
+	private CertStore crlStore(X509Certificate... revoked) throws Exception
+	{
+		Date thisUpdate = new Date(System.currentTimeMillis() - MINUTE);
+		X509v2CRLBuilder builder = new JcaX509v2CRLBuilder(root, thisUpdate);
+		builder.setNextUpdate(new Date(System.currentTimeMillis() + 10 * MINUTE));
+		for (X509Certificate certificate: revoked)
+			builder.addCRLEntry(certificate.getSerialNumber(), thisUpdate, 1);
+		ContentSigner signer = new JcaContentSignerBuilder("SHA256withRSA")
+				.setProvider(BC).build(rootKeyPair.getPrivate());
+		X509CRL crl = new JcaX509CRLConverter().setProvider(BC)
+				.getCRL(builder.build(signer));
+		return CertStore.getInstance("Collection",
+				new CollectionCertStoreParameters(Collections.singletonList(crl)), BC);
+	}
+
+	private CertStore emptyCRLStore() throws Exception
+	{
+		return CertStore.getInstance("Collection",
+				new CollectionCertStoreParameters(Collections.emptyList()), BC);
 	}
 
 	private void assertNativeOCSPFailure(ValidationResult result)

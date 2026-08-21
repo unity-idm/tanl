@@ -536,6 +536,36 @@ CRL/OCSP combinations, mechanism ordering, and useAllEnabled remain separate
 layers.
 
 
+NATIVE COMBINED REVOCATION POLICY
+
+Configurations combining CrlCheckingMode.REQUIRE with either
+OCSPCheckingMode.REQUIRE or OCSPCheckingMode.IF_AVAILABLE now use native
+Bouncy Castle validation for both certificate-array and asserted-CertPath
+entry points. Base path validation is completed first, then the configured
+RevocationCheckingOrder and useAllEnabled policy is applied independently to
+each non-anchor certificate.
+
+Native OCSP now retains an internal distinction between a verified response
+and unavailability. With useAllEnabled false, only a verified first mechanism
+short-circuits the second. Optional OCSP absence or exhaustion through HTTP
+transport failures advances to CRL when CRL is next. A received invalid OCSP
+response and every strict CRL or required OCSP failure remain terminal and do
+not trigger mechanism fallback. With useAllEnabled true both mechanisms are
+evaluated, subject to their individual required or optional mode.
+
+The combined path reuses all native OCSP responder discovery, ordering,
+transport, cache, nonce, failure-cache, and notification behavior. CRLs are
+checked natively for each certificate/issuer edge using the configured CRL
+and certificate stores. No provider messages are parsed and no unsigned OCSP
+status is trusted.
+
+RevocationParameters.clone() now preserves RevocationCheckingOrder and
+useAllEnabled instead of silently resetting both to their defaults.
+
+CrlCheckingMode.IF_VALID, including its combined configurations, remains on
+the compatibility implementation pending the separate IF_PRESENT decision.
+
+
 2.x HISTORICAL CHANGES
 
 1) changed semantics of the DN compare methods operating on the string representation.
