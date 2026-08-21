@@ -64,6 +64,7 @@ import eu.emi.security.authn.x509.ValidationErrorCode;
 import eu.emi.security.authn.x509.ValidationResult;
 import eu.emi.security.authn.x509.ValidationStage;
 import eu.emi.security.authn.x509.helpers.ocsp.OCSPClientImpl;
+import eu.emi.security.authn.x509.helpers.ocsp.OCSPClientImpl.OCSPResponseDecodingException;
 import eu.emi.security.authn.x509.helpers.ocsp.OCSPResponseStructure;
 import eu.emi.security.authn.x509.impl.CertificateUtils;
 
@@ -737,11 +738,11 @@ final class NativeBCPKIXValidator
 			if (issuer == null)
 				return ocspDiscoveryFailure(diagnosticChain, path, i,
 						"OCSP validation requires the issuer trust-anchor certificate", null);
-			ValidationResult failure = validateFetchedOCSPEdge(certificate, issuer,
+			OCSPResponderAttempt attempt = validateFetchedOCSPEdge(certificate, issuer,
 					responder, responderCertificate, fetchPolicy, certificateStore,
 					diagnosticChain, i);
-			if (failure != null)
-				return failure;
+			if (attempt.failure != null)
+				return attempt.failure;
 		}
 		return null;
 	}
@@ -766,44 +767,30 @@ final class NativeBCPKIXValidator
 				return ocspDiscoveryFailure(diagnosticChain, path, i,
 						"OCSP validation requires the issuer trust-anchor certificate", null);
 
-			List<URI> responders = Collections.emptyList();
-			if (fetchPolicy == null || !fetchPolicy.preferLocalResponders ||
-					fetchPolicy.localResponders.isEmpty())
-				try
-				{
-					responders = OCSPResponderDiscovery.getResponderURIs(certificate);
-				} catch (CertificateException e)
-				{
-					return ocspDiscoveryFailure(diagnosticChain, path, i,
-							"Can not discover an OCSP responder", e);
-				}
-			CertPath edgePath = toCertPath(Collections.singletonList(certificate));
-			Set<TrustAnchor> edgeAnchor = Collections.singleton(
-					new TrustAnchor(issuer, null));
 			if (fetchPolicy != null)
 			{
-				List<OCSPResponderTarget> ordered =
-						new ArrayList<OCSPResponderTarget>();
-				if (fetchPolicy.preferLocalResponders)
-					ordered.addAll(fetchPolicy.localResponders);
-				for (URI responder: responders)
-					ordered.add(new OCSPResponderTarget(responder, null));
-				if (!fetchPolicy.preferLocalResponders)
-					ordered.addAll(fetchPolicy.localResponders);
-				if (ordered.isEmpty())
-					return ocspDiscoveryFailure(diagnosticChain, path, i,
-							"Strict native OCSP requires at least one responder", null);
-				OCSPResponderTarget selected = ordered.get(0);
-				ValidationResult failure = validateFetchedOCSPEdge(certificate, issuer,
-						selected.responder, selected.certificate, fetchPolicy,
-						certificateStore, diagnosticChain, i);
+				ValidationResult failure = validateOrderedOCSPEdge(certificate, issuer,
+						path, fetchPolicy, certificateStore, diagnosticChain, i);
 				if (failure != null)
 					return failure;
 				continue;
 			}
+
+			List<URI> responders;
+			try
+			{
+				responders = OCSPResponderDiscovery.getResponderURIs(certificate);
+			} catch (CertificateException e)
+			{
+				return ocspDiscoveryFailure(diagnosticChain, path, i,
+						"Can not discover an OCSP responder", e);
+			}
 			if (responders.size() != 1)
 				return ocspDiscoveryFailure(diagnosticChain, path, i,
 						"Strict native OCSP requires exactly one discovered responder", null);
+			CertPath edgePath = toCertPath(Collections.singletonList(certificate));
+			Set<TrustAnchor> edgeAnchor = Collections.singleton(
+					new TrustAnchor(issuer, null));
 			try
 			{
 				validateNativeWithOCSP(edgePath, edgeAnchor, certificateStore,
@@ -824,7 +811,93 @@ final class NativeBCPKIXValidator
 		return null;
 	}
 
-	private ValidationResult validateFetchedOCSPEdge(X509Certificate certificate,
+	private ValidationResult validateOrderedOCSPEdge(X509Certificate certificate,
+			X509Certificate issuer, CertPath path, OCSPFetchPolicy fetchPolicy,
+			CertStore certificateStore, X509Certificate[] diagnosticChain,
+			int position)
+	{
+		List<OCSPResponderTarget> first;
+		List<OCSPResponderTarget> second;
+		if (fetchPolicy.preferLocalResponders)
+		{
+			first = fetchPolicy.localResponders;
+			second = null;
+		} else
+		{
+			try
+			{
+				first = discoveredResponderTargets(certificate);
+			} catch (CertificateException e)
+			{
+				return ocspDiscoveryFailure(diagnosticChain, path, position,
+						"Can not discover an OCSP responder", e);
+			}
+			second = fetchPolicy.localResponders;
+		}
+
+		OCSPResponderGroupResult firstResult = validateResponderGroup(first,
+				certificate, issuer, fetchPolicy, certificateStore, diagnosticChain,
+				position);
+		if (firstResult.success)
+			return null;
+		if (firstResult.terminalFailure)
+			return firstResult.failure;
+
+		if (second == null)
+			try
+			{
+				second = discoveredResponderTargets(certificate);
+			} catch (CertificateException e)
+			{
+				return ocspDiscoveryFailure(diagnosticChain, path, position,
+						"Can not discover an OCSP responder", e);
+			}
+		OCSPResponderGroupResult secondResult = validateResponderGroup(second,
+				certificate, issuer, fetchPolicy, certificateStore, diagnosticChain,
+				position);
+		if (secondResult.success)
+			return null;
+		if (secondResult.terminalFailure || secondResult.failure != null)
+			return secondResult.failure;
+		if (firstResult.failure != null)
+			return firstResult.failure;
+		return ocspDiscoveryFailure(diagnosticChain, path, position,
+				"Strict native OCSP requires at least one responder", null);
+	}
+
+	private List<OCSPResponderTarget> discoveredResponderTargets(
+			X509Certificate certificate) throws CertificateException
+	{
+		List<URI> discovered = OCSPResponderDiscovery.getResponderURIs(certificate);
+		List<OCSPResponderTarget> result =
+				new ArrayList<OCSPResponderTarget>(discovered.size());
+		for (URI responder: discovered)
+			result.add(new OCSPResponderTarget(responder, null));
+		return result;
+	}
+
+	private OCSPResponderGroupResult validateResponderGroup(
+			List<OCSPResponderTarget> responders, X509Certificate certificate,
+			X509Certificate issuer, OCSPFetchPolicy fetchPolicy,
+			CertStore certificateStore, X509Certificate[] diagnosticChain,
+			int position)
+	{
+		ValidationResult lastTransportFailure = null;
+		for (OCSPResponderTarget responder: responders)
+		{
+			OCSPResponderAttempt attempt = validateFetchedOCSPEdge(certificate, issuer,
+					responder.responder, responder.certificate, fetchPolicy,
+					certificateStore, diagnosticChain, position);
+			if (attempt.failure == null)
+				return OCSPResponderGroupResult.success();
+			if (!attempt.retryableTransportFailure)
+				return OCSPResponderGroupResult.terminal(attempt.failure);
+			lastTransportFailure = attempt.failure;
+		}
+		return OCSPResponderGroupResult.retryable(lastTransportFailure);
+	}
+
+	private OCSPResponderAttempt validateFetchedOCSPEdge(X509Certificate certificate,
 			X509Certificate issuer, URI responder,
 			X509Certificate responderCertificate, OCSPFetchPolicy fetchPolicy,
 			CertStore certificateStore, X509Certificate[] diagnosticChain,
@@ -844,7 +917,7 @@ final class NativeBCPKIXValidator
 			{
 				validateNativeWithOCSPResponse(edgePath, edgeAnchor, certificateStore,
 						certificate, cachedResponse, responderCertificate);
-				return null;
+				return OCSPResponderAttempt.success();
 			} catch (CertPathValidatorException e)
 			{
 				ocspResponseCache.remove(cacheKey, fetchPolicy.diskCache,
@@ -859,13 +932,43 @@ final class NativeBCPKIXValidator
 						cacheKey.diskKey);
 			}
 		}
+		OCSPClientImpl client = new OCSPClientImpl();
+		OCSPReq request;
 		try
 		{
-			OCSPClientImpl client = new OCSPClientImpl();
-			OCSPReq request = client.createRequest(certificate, issuer, null,
+			request = client.createRequest(certificate, issuer, null,
 					fetchPolicy.useNonce);
-			OCSPResponseStructure fetched = client.send(responder.toURL(), request,
+		} catch (OCSPException e)
+		{
+			return OCSPResponderAttempt.failure(invalid(diagnosticChain, position,
+					ValidationErrorCode.PKIX_FAILURE, ValidationStage.REVOCATION, e), false);
+		} catch (RuntimeException e)
+		{
+			return OCSPResponderAttempt.failure(invalid(diagnosticChain, position,
+					ValidationErrorCode.PKIX_FAILURE, ValidationStage.REVOCATION, e), false);
+		}
+
+		OCSPResponseStructure fetched;
+		try
+		{
+			fetched = client.send(responder.toURL(), request,
 					fetchPolicy.timeout);
+		} catch (OCSPResponseDecodingException e)
+		{
+			return OCSPResponderAttempt.failure(invalid(diagnosticChain, position,
+					ValidationErrorCode.PKIX_FAILURE, ValidationStage.REVOCATION, e), false);
+		} catch (IOException e)
+		{
+			return OCSPResponderAttempt.failure(invalid(diagnosticChain, position,
+					ValidationErrorCode.PKIX_FAILURE, ValidationStage.REVOCATION, e), true);
+		} catch (RuntimeException e)
+		{
+			return OCSPResponderAttempt.failure(invalid(diagnosticChain, position,
+					ValidationErrorCode.PKIX_FAILURE, ValidationStage.REVOCATION, e), false);
+		}
+
+		try
+		{
 			if (fetchPolicy.useNonce)
 				validateResponseNonce(request, fetched.getResponse());
 			byte[] response = fetched.getResponse().getEncoded();
@@ -874,26 +977,27 @@ final class NativeBCPKIXValidator
 			if (!fetchPolicy.useNonce)
 				ocspResponseCache.put(cacheKey, response, responseExpiry(fetched),
 						fetchPolicy.cacheTtl, fetchPolicy.diskCache, cacheKey.diskKey);
-			return null;
+			return OCSPResponderAttempt.success();
 		} catch (CertPathValidatorException e)
 		{
-			return invalidRevocationValidation(diagnosticChain, e, position);
+			return OCSPResponderAttempt.failure(
+					invalidRevocationValidation(diagnosticChain, e, position), false);
 		} catch (InvalidAlgorithmParameterException e)
 		{
 			throw new IllegalStateException(
 					"Native BC PKIX validator rejected prefetched OCSP parameters", e);
 		} catch (IOException e)
 		{
-			return invalid(diagnosticChain, position, ValidationErrorCode.PKIX_FAILURE,
-					ValidationStage.REVOCATION, e);
+			return OCSPResponderAttempt.failure(invalid(diagnosticChain, position,
+					ValidationErrorCode.PKIX_FAILURE, ValidationStage.REVOCATION, e), false);
 		} catch (OCSPException e)
 		{
-			return invalid(diagnosticChain, position, ValidationErrorCode.PKIX_FAILURE,
-					ValidationStage.REVOCATION, e);
+			return OCSPResponderAttempt.failure(invalid(diagnosticChain, position,
+					ValidationErrorCode.PKIX_FAILURE, ValidationStage.REVOCATION, e), false);
 		} catch (RuntimeException e)
 		{
-			return invalid(diagnosticChain, position, ValidationErrorCode.PKIX_FAILURE,
-					ValidationStage.REVOCATION, e);
+			return OCSPResponderAttempt.failure(invalid(diagnosticChain, position,
+					ValidationErrorCode.PKIX_FAILURE, ValidationStage.REVOCATION, e), false);
 		}
 	}
 
@@ -1025,6 +1129,60 @@ final class NativeBCPKIXValidator
 		{
 			this.responder = responder;
 			this.certificate = certificate;
+		}
+	}
+
+	private static final class OCSPResponderAttempt
+	{
+		private final ValidationResult failure;
+		private final boolean retryableTransportFailure;
+
+		private OCSPResponderAttempt(ValidationResult failure,
+				boolean retryableTransportFailure)
+		{
+			this.failure = failure;
+			this.retryableTransportFailure = retryableTransportFailure;
+		}
+
+		private static OCSPResponderAttempt success()
+		{
+			return new OCSPResponderAttempt(null, false);
+		}
+
+		private static OCSPResponderAttempt failure(ValidationResult failure,
+				boolean retryableTransportFailure)
+		{
+			return new OCSPResponderAttempt(failure, retryableTransportFailure);
+		}
+	}
+
+	private static final class OCSPResponderGroupResult
+	{
+		private final boolean success;
+		private final boolean terminalFailure;
+		private final ValidationResult failure;
+
+		private OCSPResponderGroupResult(boolean success, boolean terminalFailure,
+				ValidationResult failure)
+		{
+			this.success = success;
+			this.terminalFailure = terminalFailure;
+			this.failure = failure;
+		}
+
+		private static OCSPResponderGroupResult success()
+		{
+			return new OCSPResponderGroupResult(true, false, null);
+		}
+
+		private static OCSPResponderGroupResult terminal(ValidationResult failure)
+		{
+			return new OCSPResponderGroupResult(false, true, failure);
+		}
+
+		private static OCSPResponderGroupResult retryable(ValidationResult failure)
+		{
+			return new OCSPResponderGroupResult(false, false, failure);
 		}
 	}
 

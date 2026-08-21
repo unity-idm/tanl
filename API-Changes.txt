@@ -410,8 +410,32 @@ returned immediately and is not converted into success by a later responder.
 BC 1.85 does not structurally distinguish revoked, unknown, stale, forged, or
 otherwise invalid responses in the observed CertPathValidatorException
 reasons, and provider messages are not parsed to guess retryability. Safe
-transport-failure fallback remains a separate layer, as do
-OCSPCheckingMode.IF_AVAILABLE, CRL/OCSP combinations, and update notifications.
+transport-failure fallback is added by the following layer.
+
+
+NATIVE OCSP TRANSPORT FALLBACK
+
+Strict native OCSP validation now tries the next ordered responder when an
+HTTP(S) connection, request, or response-read operation fails. Fallback
+crosses configured and AIA responder groups in the order established by
+OCSPParametes.isPreferLocalResponders(). A successful response still passes
+through nonce enforcement and a fresh PKIXRevocationChecker before it can
+produce a valid result. If every attempted responder has a transport failure,
+the final transport failure is returned at the original certificate position.
+
+Response-data failures are explicitly separated from transport failures.
+Oversized or ASN.1-malformed OCSP bytes raise a bounded response-decoding
+failure and stop validation. Missing or mismatched nonces and every native BC
+response rejection also stop immediately. This prevents revoked, unknown,
+stale, forged, or otherwise invalid response data from being converted into
+success by a later responder. Retry decisions use exception types and control
+flow only; provider messages are not parsed.
+
+Response caches remain keyed by responder, certificate, issuer, and explicit
+responder certificate, so fallback can reuse only a response belonging to the
+candidate being attempted. Nonce-enabled attempts continue to bypass caches.
+OCSPCheckingMode.IF_AVAILABLE, CRL/OCSP combinations, responder-failure
+caching, and update notifications remain separate layers.
 
 
 2.x HISTORICAL CHANGES
