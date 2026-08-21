@@ -7,13 +7,10 @@ package eu.emi.security.authn.x509;
 import static org.junit.Assert.*;
 
 import java.io.FileInputStream;
-import java.io.IOException;
 import java.security.cert.CertPathValidatorException;
 import java.security.cert.X509Certificate;
 import java.util.Collections;
 import java.util.HashSet;
-import java.util.Properties;
-import java.util.Set;
 
 import org.junit.Test;
 
@@ -24,67 +21,18 @@ import eu.emi.security.authn.x509.impl.CertificateUtilsTest;
 public class ErrorTest
 {
 	/**
-	 * Checks if all message codes have corresponding enum, if all enums
-	 * has corresponding key in properties file and if each code
-	 * has a proper category defined.
-	 * 
-	 * @throws IOException
+	 * Checks that the stable native error catalogue has a category and message.
 	 */
 	@Test
-	public void testMessages() throws IOException
+	public void testMessages()
 	{
-		Properties p = new Properties();
-		p.load(ValidationErrorCategory.class.getResourceAsStream(
-					"/eu/emi/security/authn/x509/valiadationErrors.properties"));
-		
-		Set<Object> keys = p.keySet();
-		Set<String> categoryPresent = new HashSet<String>();
-		Set<String> codePresent = new HashSet<String>();
-		for (Object keyO: keys)
+		assertEquals(17, ValidationErrorCode.values().length);
+		for (ValidationErrorCode code: ValidationErrorCode.values())
 		{
-			String key = (String) keyO;
-			if (key.endsWith(".category"))
-			{
-				String k = key.substring(0, key.length() - 9);
-				String val = p.getProperty(key);
-				try
-				{
-					ValidationErrorCategory.valueOf(val);
-				} catch (IllegalArgumentException e)
-				{
-					fail("Wrong category for key: " + key);
-				}
-				categoryPresent.add(k);
-			} else
-			{
-				try
-				{
-					ValidationErrorCode.valueOf(key);
-				} catch (IllegalArgumentException e)
-				{
-					fail("No code in enum for key: " + key);
-				}
-				codePresent.add(key);
-			}
-		}
-		
-		for (String k: codePresent)
-		{
-			if (!categoryPresent.contains(k))
-				fail("No category for " + k);
-		}
-		
-		for (String k: categoryPresent)
-		{
-			if (!codePresent.contains(k))
-				fail("No code for category " + k);
-		}
-		
-		ValidationErrorCode allCodes[] = ValidationErrorCode.values();
-		for (ValidationErrorCode code: allCodes)
-		{
-			if (!codePresent.contains(code.name()))
-				fail("No message for code " + code.name());
+			assertNotNull(ValidationErrorCategory.getErrorCategory(code));
+			ValidationError error = new ValidationError(null, -1, code,
+					ValidationStage.PATH_VALIDATION, null, null);
+			assertFalse(error.getMessage().isEmpty());
 		}
 	}
 

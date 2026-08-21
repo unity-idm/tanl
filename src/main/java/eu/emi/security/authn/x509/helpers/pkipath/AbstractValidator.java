@@ -18,7 +18,6 @@ import java.util.Set;
 import eu.emi.security.authn.x509.CrlCheckingMode;
 import eu.emi.security.authn.x509.OCSPCheckingMode;
 import eu.emi.security.authn.x509.OCSPParametes;
-import eu.emi.security.authn.x509.OCSPResponder;
 import eu.emi.security.authn.x509.RevocationParameters;
 import eu.emi.security.authn.x509.StoreUpdateListener;
 import eu.emi.security.authn.x509.ValidationError;
@@ -37,8 +36,8 @@ import eu.emi.security.authn.x509.impl.CertificateUtils;
 /**
  * Base implementation of {@link X509CertChainValidator}.
  * It is configured with {@link CertStore} providing CRLs and {@link TrustAnchorStore}
- * providing trusted CAs. The implementation validates certificates using 
- * the {@link BCCertPathValidator}.
+ * providing trusted CAs. Certificate paths and revocation data are validated
+ * by the native Bouncy Castle PKIX implementation.
  * <p>
  * This class is thread safe and its extensions should also guarantee this.
  * 
@@ -55,7 +54,6 @@ public abstract class AbstractValidator implements X509CertChainValidatorExt
 	protected final ObserversHandler observers;
 	private TrustAnchorStore caStore;
 	private AbstractCRLStoreSPI crlStore;
-	protected BCCertPathValidator validator;
 	private NativeBCPKIXValidator nativeValidator;
 	private RevocationParameters revocationMode;
 	protected boolean disposed;
@@ -91,7 +89,6 @@ public abstract class AbstractValidator implements X509CertChainValidatorExt
 			this.caStore = caStore;
 		if (crlStore != null)
 			this.crlStore = crlStore;
-		this.validator = new BCCertPathValidator();
 		this.nativeValidator = new NativeBCPKIXValidator(observers);
 		this.revocationMode = revocationCheckingMode;
 	}
@@ -119,48 +116,25 @@ public abstract class AbstractValidator implements X509CertChainValidatorExt
 			certsA[i] = (X509Certificate) c;
 		}
 		Set<TrustAnchor> anchors = getTrustAnchors(certsA);
-		if (isNativeBaseValidation())
+		ValidationResult configurationFailure = validateConfiguration(certsA);
+		if (configurationFailure != null)
+			return processResult(configurationFailure);
+		try
 		{
-			try
-			{
-				return processResult(nativeValidator.validate(certPath, anchors));
-			} catch (CertificateException e)
-			{
-				return processInputError(certsA, e);
-			}
-		}
-		if (isNativeCRLValidation())
+			ValidationResult result;
+			if (isBaseValidation())
+				result = nativeValidator.validate(certPath, anchors);
+			else if (isCRLValidation())
+				result = validateNativeCRL(certPath, anchors);
+			else if (isOCSPValidation())
+				result = validateNativeOCSP(certPath, anchors);
+			else
+				result = validateNativeRevocation(certPath, anchors);
+			return processResult(result);
+		} catch (CertificateException e)
 		{
-			try
-			{
-				return processResult(validateNativeCRL(certPath, anchors));
-			} catch (CertificateException e)
-			{
-				return processInputError(certsA, e);
-			}
+			return processInputError(certsA, e);
 		}
-		if (isNativeOCSPValidation())
-		{
-			try
-			{
-				ValidationResult result = validateNativeOCSP(certPath, anchors);
-				return processResult(result);
-			} catch (CertificateException e)
-			{
-				return processInputError(certsA, e);
-			}
-		}
-		if (isNativeCombinedRevocationValidation())
-		{
-			try
-			{
-				return processResult(validateNativeRevocation(certPath, anchors));
-			} catch (CertificateException e)
-			{
-				return processInputError(certsA, e);
-			}
-		}
-		return validate(certsA);	
 	}
 
 	
@@ -182,20 +156,20 @@ public abstract class AbstractValidator implements X509CertChainValidatorExt
 	{
 		if (isDisposed())
 			throw new IllegalStateException("The validator instance was disposed");
+		ValidationResult configurationFailure = validateConfiguration(certChain);
+		if (configurationFailure != null)
+			return processResult(configurationFailure);
 		ValidationResult result;
 		try
 		{
-			if (isNativeBaseValidation())
+			if (isBaseValidation())
 				result = nativeValidator.validate(certChain, anchors);
-			else if (isNativeCRLValidation())
+			else if (isCRLValidation())
 				result = validateNativeCRL(certChain, anchors);
-			else if (isNativeOCSPValidation())
+			else if (isOCSPValidation())
 				result = validateNativeOCSP(certChain, anchors);
-			else if (isNativeCombinedRevocationValidation())
-				result = validateNativeRevocation(certChain, anchors);
 			else
-				result = validator.validate(certChain, anchors,
-						new SimpleCRLStore(crlStore), revocationMode, observers);
+				result = validateNativeRevocation(certChain, anchors);
 		} catch (CertificateException e)
 		{
 			return processInputError(certChain, e);
@@ -203,56 +177,51 @@ public abstract class AbstractValidator implements X509CertChainValidatorExt
 		return processResult(result);
 	}
 
-	private boolean isNativeBaseValidation()
+	private ValidationResult validateConfiguration(X509Certificate[] certChain)
+	{
+		if (revocationMode == null)
+			return inputFailure(certChain,
+					"Revocation parameters must not be null");
+		if (revocationMode.getCrlCheckingMode() == null)
+			return inputFailure(certChain,
+					"CRL checking mode must not be null");
+		if (revocationMode.getOcspParameters() == null)
+			return inputFailure(certChain,
+					"OCSP parameters must not be null");
+		if (revocationMode.getOcspParameters().getCheckingMode() == null)
+			return inputFailure(certChain,
+					"OCSP checking mode must not be null");
+		return null;
+	}
+
+	private ValidationResult inputFailure(X509Certificate[] certChain,
+			String message)
+	{
+		IllegalArgumentException failure = new IllegalArgumentException(message);
+		return ValidationResult.invalid(new ValidationError(certChain, -1,
+				ValidationErrorCode.INVALID_INPUT, ValidationStage.INPUT,
+				message, failure));
+	}
+
+	private boolean isBaseValidation()
 	{
 		return revocationMode.getCrlCheckingMode() == CrlCheckingMode.IGNORE &&
 				revocationMode.getOcspParameters().getCheckingMode() ==
 					OCSPCheckingMode.IGNORE;
 	}
 
-	private boolean isNativeCRLValidation()
+	private boolean isCRLValidation()
 	{
 		return revocationMode.getCrlCheckingMode() != CrlCheckingMode.IGNORE &&
 				revocationMode.getOcspParameters().getCheckingMode() ==
 					OCSPCheckingMode.IGNORE;
 	}
 
-	private boolean isNativeOCSPValidation()
+	private boolean isOCSPValidation()
 	{
-		if (revocationMode.getCrlCheckingMode() != CrlCheckingMode.IGNORE)
-			return false;
-		return hasNativeOCSPConfiguration(revocationMode.getOcspParameters());
-	}
-
-	private boolean isNativeCombinedRevocationValidation()
-	{
-		return revocationMode.getCrlCheckingMode() != CrlCheckingMode.IGNORE &&
-				hasNativeOCSPConfiguration(revocationMode.getOcspParameters());
-	}
-
-	private boolean hasNativeOCSPConfiguration(OCSPParametes parameters)
-	{
-		if (parameters == null || parameters.getCheckingMode() == OCSPCheckingMode.IGNORE)
-			return false;
-		OCSPResponder[] responders = parameters.getLocalResponders();
-		if (responders == null || !hasSupportedOCSPTransport(parameters))
-			return false;
-		for (OCSPResponder responder: responders)
-			if (responder == null || responder.getAddress() == null ||
-					responder.getCertificate() == null || !isHTTPResponder(responder))
-				return false;
-		return true;
-	}
-
-	private boolean hasSupportedOCSPTransport(OCSPParametes parameters)
-	{
-		return parameters.getConntectTimeout() >= 0;
-	}
-
-	private boolean isHTTPResponder(OCSPResponder responder)
-	{
-		String protocol = responder.getAddress().getProtocol();
-		return "http".equalsIgnoreCase(protocol) || "https".equalsIgnoreCase(protocol);
+		return revocationMode.getCrlCheckingMode() == CrlCheckingMode.IGNORE &&
+				revocationMode.getOcspParameters().getCheckingMode() !=
+					OCSPCheckingMode.IGNORE;
 	}
 
 	private ValidationResult validateNativeOCSP(X509Certificate[] certificates,
