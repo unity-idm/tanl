@@ -199,6 +199,31 @@ final class NativeBCPKIXValidator
 	}
 
 	/**
+	 * Builds and validates a path using the first responder selected from the
+	 * configured and certificate-discovered responder groups.
+	 */
+	ValidationResult validateWithOCSP(X509Certificate[] input,
+			Set<TrustAnchor> configuredAnchors, OCSPResponder[] localResponders,
+			boolean preferLocalResponders, int timeout, int cacheTtl,
+			String diskCachePath, boolean useNonce) throws CertificateException
+	{
+		if (timeout < 0)
+			return invalidInput(input, -1, "OCSP timeout must not be negative");
+		List<OCSPResponderTarget> configured;
+		try
+		{
+			configured = configuredResponderTargets(localResponders);
+		} catch (IllegalArgumentException e)
+		{
+			return invalid(input, -1, ValidationErrorCode.INVALID_INPUT,
+					ValidationStage.INPUT, e);
+		}
+		return validate(input, configuredAnchors, null, null, null, true,
+				new OCSPFetchPolicy(timeout, cacheTtl, diskCachePath, useNonce,
+						configured, preferLocalResponders));
+	}
+
+	/**
 	 * Builds and validates a path, then performs strict native OCSP checking
 	 * using the single responder URI discovered on each certificate.
 	 */
@@ -420,6 +445,31 @@ final class NativeBCPKIXValidator
 			return invalid(null, -1, ValidationErrorCode.INVALID_INPUT,
 					ValidationStage.INPUT, e);
 		}
+	}
+
+	/**
+	 * Validates an asserted path using the first responder selected from the
+	 * configured and certificate-discovered responder groups.
+	 */
+	ValidationResult validateWithOCSP(CertPath suppliedPath,
+			Set<TrustAnchor> configuredAnchors, OCSPResponder[] localResponders,
+			boolean preferLocalResponders, int timeout, int cacheTtl,
+			String diskCachePath, boolean useNonce) throws CertificateException
+	{
+		if (timeout < 0)
+			return invalidInput(null, -1, "OCSP timeout must not be negative");
+		List<OCSPResponderTarget> configured;
+		try
+		{
+			configured = configuredResponderTargets(localResponders);
+		} catch (IllegalArgumentException e)
+		{
+			return invalid(null, -1, ValidationErrorCode.INVALID_INPUT,
+					ValidationStage.INPUT, e);
+		}
+		return validate(suppliedPath, configuredAnchors, null, null, null, true,
+				new OCSPFetchPolicy(timeout, cacheTtl, diskCachePath, useNonce,
+						configured, preferLocalResponders));
 	}
 
 	/**
@@ -699,8 +749,9 @@ final class NativeBCPKIXValidator
 	/**
 	 * BC exposes only one responder URI per checker. Validate one already
 	 * base-validated certificate/issuer edge at a time so each certificate can
-	 * use its own AIA responder without changing global security properties.
-	 * A non-null return value is the first strict OCSP failure.
+	 * select its own ordered configured/AIA responder without changing global
+	 * security properties. A non-null return value is the first strict OCSP
+	 * failure.
 	 */
 	private ValidationResult validateDiscoveredOCSP(CertPath path,
 			TrustAnchor selectedAnchor, CertStore certificateStore,
@@ -715,31 +766,44 @@ final class NativeBCPKIXValidator
 				return ocspDiscoveryFailure(diagnosticChain, path, i,
 						"OCSP validation requires the issuer trust-anchor certificate", null);
 
-			List<URI> responders;
-			try
-			{
-				responders = OCSPResponderDiscovery.getResponderURIs(certificate);
-			} catch (CertificateException e)
-			{
-				return ocspDiscoveryFailure(diagnosticChain, path, i,
-						"Can not discover an OCSP responder", e);
-			}
-			if (responders.size() != 1)
-				return ocspDiscoveryFailure(diagnosticChain, path, i,
-						"Strict native OCSP requires exactly one discovered responder", null);
-
+			List<URI> responders = Collections.emptyList();
+			if (fetchPolicy == null || !fetchPolicy.preferLocalResponders ||
+					fetchPolicy.localResponders.isEmpty())
+				try
+				{
+					responders = OCSPResponderDiscovery.getResponderURIs(certificate);
+				} catch (CertificateException e)
+				{
+					return ocspDiscoveryFailure(diagnosticChain, path, i,
+							"Can not discover an OCSP responder", e);
+				}
 			CertPath edgePath = toCertPath(Collections.singletonList(certificate));
 			Set<TrustAnchor> edgeAnchor = Collections.singleton(
 					new TrustAnchor(issuer, null));
 			if (fetchPolicy != null)
 			{
+				List<OCSPResponderTarget> ordered =
+						new ArrayList<OCSPResponderTarget>();
+				if (fetchPolicy.preferLocalResponders)
+					ordered.addAll(fetchPolicy.localResponders);
+				for (URI responder: responders)
+					ordered.add(new OCSPResponderTarget(responder, null));
+				if (!fetchPolicy.preferLocalResponders)
+					ordered.addAll(fetchPolicy.localResponders);
+				if (ordered.isEmpty())
+					return ocspDiscoveryFailure(diagnosticChain, path, i,
+							"Strict native OCSP requires at least one responder", null);
+				OCSPResponderTarget selected = ordered.get(0);
 				ValidationResult failure = validateFetchedOCSPEdge(certificate, issuer,
-						responders.get(0), null, fetchPolicy, certificateStore,
-						diagnosticChain, i);
+						selected.responder, selected.certificate, fetchPolicy,
+						certificateStore, diagnosticChain, i);
 				if (failure != null)
 					return failure;
 				continue;
 			}
+			if (responders.size() != 1)
+				return ocspDiscoveryFailure(diagnosticChain, path, i,
+						"Strict native OCSP requires exactly one discovered responder", null);
 			try
 			{
 				validateNativeWithOCSP(edgePath, edgeAnchor, certificateStore,
@@ -884,21 +948,83 @@ final class NativeBCPKIXValidator
 				selectedAnchor.getTrustedCert();
 	}
 
+	private List<OCSPResponderTarget> configuredResponderTargets(
+			OCSPResponder[] responders)
+	{
+		if (responders == null)
+			throw new IllegalArgumentException(
+					"Configured OCSP responder array must not be null");
+		List<OCSPResponderTarget> result =
+				new ArrayList<OCSPResponderTarget>(responders.length);
+		for (OCSPResponder responder: responders)
+		{
+			if (responder == null)
+				throw new IllegalArgumentException(
+						"Configured OCSP responder must not be null");
+			if (responder.getAddress() == null)
+				throw new IllegalArgumentException(
+						"Configured OCSP responder address must not be null");
+			if (responder.getCertificate() == null)
+				throw new IllegalArgumentException(
+						"Configured OCSP responder certificate must not be null");
+			String protocol = responder.getAddress().getProtocol();
+			if (!"http".equalsIgnoreCase(protocol) &&
+					!"https".equalsIgnoreCase(protocol))
+				throw new IllegalArgumentException(
+						"Configured OCSP responder must use HTTP or HTTPS");
+			try
+			{
+				result.add(new OCSPResponderTarget(responder.getAddress().toURI(),
+						responder.getCertificate()));
+			} catch (URISyntaxException e)
+			{
+				throw new IllegalArgumentException(
+						"Configured OCSP responder address is not a valid URI", e);
+			}
+		}
+		return result;
+	}
+
 	private static final class OCSPFetchPolicy
 	{
 		private final int timeout;
 		private final int cacheTtl;
 		private final File diskCache;
 		private final boolean useNonce;
+		private final List<OCSPResponderTarget> localResponders;
+		private final boolean preferLocalResponders;
 
 		private OCSPFetchPolicy(int timeout, int cacheTtl, String diskCachePath,
 				boolean useNonce)
+		{
+			this(timeout, cacheTtl, diskCachePath, useNonce,
+					Collections.<OCSPResponderTarget>emptyList(), true);
+		}
+
+		private OCSPFetchPolicy(int timeout, int cacheTtl, String diskCachePath,
+				boolean useNonce, List<OCSPResponderTarget> localResponders,
+				boolean preferLocalResponders)
 		{
 			this.timeout = timeout;
 			this.cacheTtl = cacheTtl;
 			this.diskCache = diskCachePath == null || diskCachePath.trim().isEmpty() ?
 					null : new File(diskCachePath);
 			this.useNonce = useNonce;
+			this.localResponders = Collections.unmodifiableList(
+					new ArrayList<OCSPResponderTarget>(localResponders));
+			this.preferLocalResponders = preferLocalResponders;
+		}
+	}
+
+	private static final class OCSPResponderTarget
+	{
+		private final URI responder;
+		private final X509Certificate certificate;
+
+		private OCSPResponderTarget(URI responder, X509Certificate certificate)
+		{
+			this.responder = responder;
+			this.certificate = certificate;
 		}
 	}
 

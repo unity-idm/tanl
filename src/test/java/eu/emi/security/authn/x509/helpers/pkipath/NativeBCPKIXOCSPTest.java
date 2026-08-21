@@ -436,6 +436,71 @@ public class NativeBCPKIXOCSPTest
 	}
 
 	@Test
+	public void shouldSelectConfiguredAndDiscoveredRespondersInConfiguredOrder()
+			throws Exception
+	{
+		responderServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+		URI firstLocalURI = responderURI("/first-local");
+		URI secondLocalURI = responderURI("/second-local");
+		URI discoveredURI = responderURI("/discovered");
+		X509Certificate aiaTarget = certificate("CN=Ordered OCSP Target",
+				"CN=Native OCSP Root", BigInteger.valueOf(30), keyPair().getPublic(),
+				rootKeyPair.getPrivate(), false, false, discoveredURI);
+		byte[] goodResponse = response(aiaTarget, root, null,
+				rootKeyPair.getPrivate(), rootKeyPair.getPublic(),
+				new Date(System.currentTimeMillis() + 10 * MINUTE));
+		AtomicInteger firstLocalQueries = new AtomicInteger();
+		AtomicInteger secondLocalQueries = new AtomicInteger();
+		AtomicInteger discoveredQueries = new AtomicInteger();
+		addResponse("/first-local", goodResponse, firstLocalQueries);
+		addResponse("/second-local", goodResponse, secondLocalQueries);
+		addResponse("/discovered", goodResponse, discoveredQueries);
+		responderServer.start();
+		OCSPResponder[] localResponders = {
+				new OCSPResponder(firstLocalURI.toURL(), root),
+				new OCSPResponder(secondLocalURI.toURL(), root)};
+
+		ValidationResult localFirst = validator.validateWithOCSP(
+				new X509Certificate[] {aiaTarget, root}, anchors, localResponders,
+				true, 1000, -1, null, false);
+		ValidationResult discoveredFirst = validator.validateWithOCSP(
+				path(aiaTarget, root), anchors, localResponders, false, 1000, -1,
+				null, false);
+
+		assertTrue(localFirst.toString(), localFirst.isValid());
+		assertTrue(discoveredFirst.toString(), discoveredFirst.isValid());
+		assertThat(firstLocalQueries.get(), is(1));
+		assertThat(secondLocalQueries.get(), is(0));
+		assertThat(discoveredQueries.get(), is(1));
+	}
+
+	@Test
+	public void shouldNotSkipNativeFailureForALaterResponder() throws Exception
+	{
+		responderServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+		AtomicInteger firstQueries = new AtomicInteger();
+		AtomicInteger secondQueries = new AtomicInteger();
+		addResponse("/revoked-first", response(new RevokedStatus(
+				new Date(System.currentTimeMillis() - MINUTE), 1),
+				rootKeyPair.getPrivate(),
+				new Date(System.currentTimeMillis() + 10 * MINUTE)), firstQueries);
+		addResponse("/good-second", response(null, rootKeyPair.getPrivate(),
+				new Date(System.currentTimeMillis() + 10 * MINUTE)), secondQueries);
+		responderServer.start();
+		OCSPResponder[] responders = {
+				new OCSPResponder(responderURI("/revoked-first").toURL(), root),
+				new OCSPResponder(responderURI("/good-second").toURL(), root)};
+
+		ValidationResult result = validator.validateWithOCSP(
+				new X509Certificate[] {target, root}, anchors, responders, true,
+				1000, -1, null, false);
+
+		assertNativeOCSPFailure(result);
+		assertThat(firstQueries.get(), is(1));
+		assertThat(secondQueries.get(), is(0));
+	}
+
+	@Test
 	public void shouldReportDiscoveredResponderFailureAtOriginalPathPosition()
 			throws Exception
 	{
