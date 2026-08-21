@@ -503,6 +503,39 @@ OCSPCheckingMode.IF_AVAILABLE and CRL/OCSP combinations remain separate
 layers.
 
 
+NATIVE OCSP IF_AVAILABLE MODE
+
+OCSP-only validation using OCSPCheckingMode.IF_AVAILABLE now runs through the
+native ordered OCSP path for both certificate-array and asserted-CertPath
+entry points. Configuration, discovery, preference, timeout, cache, nonce,
+fallback, failure-cache, and update-notification behavior is shared with the
+required mode.
+
+The optional boundary is defined without provider-message parsing. A missing
+configured/AIA responder, or exhaustion of all ordered responders through
+structured HTTP transport failures, is accepted for that already base-
+validated certificate/issuer edge. Transport failures still produce OCSP
+update warnings and failure-cache entries before validation continues.
+
+Once response bytes are received, validation is strict. Malformed or oversized
+data, missing or mismatched nonces, revoked or unknown status, bad signatures,
+unauthorized responders, stale responses, and every other native rejection
+remain terminal failures. Accepted responses must pass the same fresh native
+PKIXRevocationChecker used by REQUIRE.
+
+This intentionally narrows the historical IF_AVAILABLE behavior, which also
+ignored unknown and general response errors. BC 1.85 exposes neither a working
+soft-failure list for its OCSP checker nor stable standard reasons that
+distinguish a signed unknown status from forged, stale, unauthorized, or other
+invalid responses. Softening an unsigned status parsed before native
+validation would allow a forged unknown response to bypass revocation checks.
+The public OCSPCheckingMode documentation now states the safe availability-
+only contract.
+
+CRL/OCSP combinations, mechanism ordering, and useAllEnabled remain separate
+layers.
+
+
 2.x HISTORICAL CHANGES
 
 1) changed semantics of the DN compare methods operating on the string representation.

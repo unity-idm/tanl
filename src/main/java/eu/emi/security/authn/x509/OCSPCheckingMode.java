@@ -12,19 +12,21 @@ package eu.emi.security.authn.x509;
 public enum OCSPCheckingMode
 {
 	/**
-	 * Require, for each checked certificate, that at least one valid OCSP responder is defined and 
-	 * that at least one responder of those defined returns a correct certificate status. 
-	 * If all OCSP responders return error or unknown status, the last one received is treated as a 
-	 * critical validation error.
+	 * Require, for each checked certificate, that at least one valid OCSP responder is defined and
+	 * that an ordered responder returns a good, natively validated certificate status. HTTP
+	 * transport failures advance to the next responder; any received response which is revoked,
+	 * unknown, malformed, forged, stale, or otherwise invalid is a terminal validation error.
 	 * Not suggested, unless it is guaranteed that well configured responder(s) is(are) defined 
 	 * and can handle all queries without timeouts.
 	 */
 	REQUIRE,
 	
 	/**
-	 * Use OCSP for each certificate if a responder is available. OCSP 'unknown' status and 
-	 * query errors (as timeout) do not cause the validation to fail. 
-	 * Also a lack of defined responder doesn't cause the validation to fail.
+	 * Use OCSP for each certificate if a responder is reachable. A lack of a
+	 * configured or discovered responder and exhausted HTTP transport failures
+	 * do not cause validation to fail. Once response bytes are received, the
+	 * response is validated strictly: revoked, unknown, malformed, forged,
+	 * stale, and otherwise invalid responses fail validation.
 	 */
 	IF_AVAILABLE,
 	

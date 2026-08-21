@@ -212,7 +212,7 @@ public abstract class AbstractValidator implements X509CertChainValidatorExt
 		if (revocationMode.getCrlCheckingMode() != CrlCheckingMode.IGNORE)
 			return false;
 		OCSPParametes parameters = revocationMode.getOcspParameters();
-		if (parameters == null || parameters.getCheckingMode() != OCSPCheckingMode.REQUIRE)
+		if (parameters == null || parameters.getCheckingMode() == OCSPCheckingMode.IGNORE)
 			return false;
 		OCSPResponder[] responders = parameters.getLocalResponders();
 		if (responders == null || !hasSupportedOCSPTransport(parameters))
@@ -239,6 +239,11 @@ public abstract class AbstractValidator implements X509CertChainValidatorExt
 			Set<TrustAnchor> anchors) throws CertificateException
 	{
 		OCSPParametes parameters = revocationMode.getOcspParameters();
+		if (parameters.getCheckingMode() == OCSPCheckingMode.IF_AVAILABLE)
+			return nativeValidator.validateWithOCSPIfAvailable(certificates, anchors,
+					parameters.getLocalResponders(),
+					parameters.isPreferLocalResponders(), getOCSPTimeout(),
+					getOCSPCacheTtl(), getOCSPDiskCachePath(), usesOCSPNonce());
 		return nativeValidator.validateWithOCSP(certificates, anchors,
 				parameters.getLocalResponders(), parameters.isPreferLocalResponders(),
 				getOCSPTimeout(), getOCSPCacheTtl(), getOCSPDiskCachePath(),
@@ -249,6 +254,11 @@ public abstract class AbstractValidator implements X509CertChainValidatorExt
 			Set<TrustAnchor> anchors) throws CertificateException
 	{
 		OCSPParametes parameters = revocationMode.getOcspParameters();
+		if (parameters.getCheckingMode() == OCSPCheckingMode.IF_AVAILABLE)
+			return nativeValidator.validateWithOCSPIfAvailable(path, anchors,
+					parameters.getLocalResponders(),
+					parameters.isPreferLocalResponders(), getOCSPTimeout(),
+					getOCSPCacheTtl(), getOCSPDiskCachePath(), usesOCSPNonce());
 		return nativeValidator.validateWithOCSP(path, anchors,
 				parameters.getLocalResponders(), parameters.isPreferLocalResponders(),
 				getOCSPTimeout(), getOCSPCacheTtl(), getOCSPDiskCachePath(),

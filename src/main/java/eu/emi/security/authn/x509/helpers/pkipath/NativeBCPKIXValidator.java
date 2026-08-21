@@ -228,6 +228,32 @@ final class NativeBCPKIXValidator
 			boolean preferLocalResponders, int timeout, int cacheTtl,
 			String diskCachePath, boolean useNonce) throws CertificateException
 	{
+		return validateWithOrderedOCSP(input, configuredAnchors, localResponders,
+				preferLocalResponders, timeout, cacheTtl, diskCachePath, useNonce,
+				false);
+	}
+
+	/**
+	 * Builds and validates a path using OCSP when a responder is reachable.
+	 * Missing responders and exhausted transport failures are accepted, while
+	 * every received response remains subject to strict native validation.
+	 */
+	ValidationResult validateWithOCSPIfAvailable(X509Certificate[] input,
+			Set<TrustAnchor> configuredAnchors, OCSPResponder[] localResponders,
+			boolean preferLocalResponders, int timeout, int cacheTtl,
+			String diskCachePath, boolean useNonce) throws CertificateException
+	{
+		return validateWithOrderedOCSP(input, configuredAnchors, localResponders,
+				preferLocalResponders, timeout, cacheTtl, diskCachePath, useNonce,
+				true);
+	}
+
+	private ValidationResult validateWithOrderedOCSP(X509Certificate[] input,
+			Set<TrustAnchor> configuredAnchors, OCSPResponder[] localResponders,
+			boolean preferLocalResponders, int timeout, int cacheTtl,
+			String diskCachePath, boolean useNonce, boolean softFailUnavailable)
+			throws CertificateException
+	{
 		if (timeout < 0)
 			return invalidInput(input, -1, "OCSP timeout must not be negative");
 		List<OCSPResponderTarget> configured;
@@ -241,7 +267,7 @@ final class NativeBCPKIXValidator
 		}
 		return validate(input, configuredAnchors, null, null, null, true,
 				new OCSPFetchPolicy(timeout, cacheTtl, diskCachePath, useNonce,
-						configured, preferLocalResponders));
+						configured, preferLocalResponders, softFailUnavailable));
 	}
 
 	/**
@@ -477,6 +503,32 @@ final class NativeBCPKIXValidator
 			boolean preferLocalResponders, int timeout, int cacheTtl,
 			String diskCachePath, boolean useNonce) throws CertificateException
 	{
+		return validateWithOrderedOCSP(suppliedPath, configuredAnchors,
+				localResponders, preferLocalResponders, timeout, cacheTtl,
+				diskCachePath, useNonce, false);
+	}
+
+	/**
+	 * Validates an asserted path using OCSP when a responder is reachable.
+	 * Missing responders and exhausted transport failures are accepted, while
+	 * every received response remains subject to strict native validation.
+	 */
+	ValidationResult validateWithOCSPIfAvailable(CertPath suppliedPath,
+			Set<TrustAnchor> configuredAnchors, OCSPResponder[] localResponders,
+			boolean preferLocalResponders, int timeout, int cacheTtl,
+			String diskCachePath, boolean useNonce) throws CertificateException
+	{
+		return validateWithOrderedOCSP(suppliedPath, configuredAnchors,
+				localResponders, preferLocalResponders, timeout, cacheTtl,
+				diskCachePath, useNonce, true);
+	}
+
+	private ValidationResult validateWithOrderedOCSP(CertPath suppliedPath,
+			Set<TrustAnchor> configuredAnchors, OCSPResponder[] localResponders,
+			boolean preferLocalResponders, int timeout, int cacheTtl,
+			String diskCachePath, boolean useNonce, boolean softFailUnavailable)
+			throws CertificateException
+	{
 		if (timeout < 0)
 			return invalidInput(null, -1, "OCSP timeout must not be negative");
 		List<OCSPResponderTarget> configured;
@@ -490,7 +542,7 @@ final class NativeBCPKIXValidator
 		}
 		return validate(suppliedPath, configuredAnchors, null, null, null, true,
 				new OCSPFetchPolicy(timeout, cacheTtl, diskCachePath, useNonce,
-						configured, preferLocalResponders));
+						configured, preferLocalResponders, softFailUnavailable));
 	}
 
 	/**
@@ -877,7 +929,11 @@ final class NativeBCPKIXValidator
 				position);
 		if (secondResult.success)
 			return null;
-		if (secondResult.terminalFailure || secondResult.failure != null)
+		if (secondResult.terminalFailure)
+			return secondResult.failure;
+		if (fetchPolicy.softFailUnavailable)
+			return null;
+		if (secondResult.failure != null)
 			return secondResult.failure;
 		if (firstResult.failure != null)
 			return firstResult.failure;
@@ -1155,17 +1211,18 @@ final class NativeBCPKIXValidator
 		private final boolean useNonce;
 		private final List<OCSPResponderTarget> localResponders;
 		private final boolean preferLocalResponders;
+		private final boolean softFailUnavailable;
 
 		private OCSPFetchPolicy(int timeout, int cacheTtl, String diskCachePath,
 				boolean useNonce)
 		{
 			this(timeout, cacheTtl, diskCachePath, useNonce,
-					Collections.<OCSPResponderTarget>emptyList(), true);
+					Collections.<OCSPResponderTarget>emptyList(), true, false);
 		}
 
 		private OCSPFetchPolicy(int timeout, int cacheTtl, String diskCachePath,
 				boolean useNonce, List<OCSPResponderTarget> localResponders,
-				boolean preferLocalResponders)
+				boolean preferLocalResponders, boolean softFailUnavailable)
 		{
 			this.timeout = timeout;
 			this.cacheTtl = cacheTtl;
@@ -1175,6 +1232,7 @@ final class NativeBCPKIXValidator
 			this.localResponders = Collections.unmodifiableList(
 					new ArrayList<OCSPResponderTarget>(localResponders));
 			this.preferLocalResponders = preferLocalResponders;
+			this.softFailUnavailable = softFailUnavailable;
 		}
 	}
 
