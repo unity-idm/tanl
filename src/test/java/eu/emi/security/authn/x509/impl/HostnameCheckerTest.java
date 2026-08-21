@@ -33,7 +33,7 @@ import eu.emi.security.authn.x509.impl.CertificateUtils.Encoding;
 
 public class HostnameCheckerTest
 {
-	public final String PFX = "src/test/resources/glite-utiljava/trusted-certs/";
+	private static final String FIXTURES = "src/test/resources/fixtures/hostname/";
 	
 	@Test
 	public void testPattern()
@@ -52,7 +52,7 @@ public class HostnameCheckerTest
 		HostnameToCertificateChecker checker = new HostnameToCertificateChecker();
 		
 		X509Certificate altnameCert = CertificateUtils.loadCertificate(
-				new FileInputStream(PFX + "trusted_altname.cert"),
+				new FileInputStream(FIXTURES + "subject-alt-names.pem"),
 				Encoding.PEM);
 		assertTrue(checker.checkMatching("ja.hoo.org", altnameCert));
 		assertTrue(checker.checkMatching("joo.haa.org", altnameCert));
@@ -65,7 +65,7 @@ public class HostnameCheckerTest
 
 		
 		X509Certificate altname2Cert = CertificateUtils.loadCertificate(
-				new FileInputStream(PFX + "trusted_altname_2.cert"),
+				new FileInputStream(FIXTURES + "subject-alt-names-multivalued-rdn.pem"),
 				Encoding.PEM);
 		assertTrue(checker.checkMatching("ja.hoo.org", altname2Cert));
 		assertTrue(checker.checkMatching("joo.haa.org", altname2Cert));
@@ -78,7 +78,7 @@ public class HostnameCheckerTest
 
 		
 		X509Certificate dnsDNCert = CertificateUtils.loadCertificate(
-				new FileInputStream(PFX + "trusted_server2.cert"),
+				new FileInputStream(FIXTURES + "common-name.pem"),
 				Encoding.PEM);
 		assertFalse(checker.checkMatching("ja.hoo.org", dnsDNCert));
 		assertFalse(checker.checkMatching("joo.haa.org", dnsDNCert));
@@ -91,14 +91,14 @@ public class HostnameCheckerTest
 
 		
 		X509Certificate cert = CertificateUtils.loadCertificate(
-				new FileInputStream("src/test/resources/glite-utiljava/input/hostcert-email.pem"),
+				new FileInputStream(FIXTURES + "common-name-with-email.pem"),
 				Encoding.PEM);
 		assertTrue(checker.checkMatching("wilco.cnaf.infn.it", cert));
 		assertFalse(checker.checkMatching("xxx.cnaf.infn.it", cert));
 
 			
 		X509Certificate cert2 = CertificateUtils.loadCertificate(
-					new FileInputStream(PFX + "trusted_host_email.cert"),
+					new FileInputStream(FIXTURES + "common-name-and-email.pem"),
 					Encoding.PEM);
 		assertTrue(checker.checkMatching("pchip10.cern.ch", cert2));
 		assertTrue(checker.checkMatching("pchip10.cern.ch", cert2));
@@ -106,7 +106,7 @@ public class HostnameCheckerTest
 
 		
 		X509Certificate cert3 = CertificateUtils.loadCertificate(
-					new FileInputStream(PFX + "trusted_altname3_2.cert"),
+					new FileInputStream(FIXTURES + "multivalued-common-name.pem"),
 					Encoding.PEM);
 		assertTrue(checker.checkMatching("pchip10.cern.ch", cert3));
 		assertTrue(checker.checkMatching("pchip10.cern.ch", cert3));
