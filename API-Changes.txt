@@ -282,12 +282,11 @@ complete selected path.
 
 Missing, multiple, malformed, relative, or non-HTTP(S) discovered responder
 locations, mixed configured/discovered responders, nonce, non-default cache
-controls, cache-enabled custom timeouts, OCSPCheckingMode.IF_AVAILABLE, and all
-CRL/OCSP combinations remain on the compatibility path. The separately
-documented no-cache timeout layer is the exception. Multiple responders are
-not retried natively because BC 1.85 does not structurally distinguish
-responder failures from definitive revocation; provider messages are not
-parsed.
+controls outside the separately documented memory-cache layer,
+OCSPCheckingMode.IF_AVAILABLE, and all CRL/OCSP combinations remain on the
+compatibility path. Multiple responders are not retried natively because BC
+1.85 does not structurally distinguish responder failures from definitive
+revocation; provider messages are not parsed.
 
 
 NATIVE OCSP CONNECTION TIMEOUT
@@ -301,15 +300,40 @@ configured connect/read timeout. The encoded response is then supplied to
 PKIXRevocationChecker.setOcspResponses(), and native BC remains responsible
 for response signature, signer, certificate status, and freshness validation.
 
-The no-cache requirement is deliberate: prefetching on every validation
-preserves a negative cache TTL exactly. Configurations with a non-negative
-custom cache TTL, disk cache, nonce, multiple responders, responder ordering,
-OCSPCheckingMode.IF_AVAILABLE, or CRL/OCSP combinations remain on the
-compatibility path. The constructor-default timeout/cache pair continues to
-use BC's own OCSP transport and weak in-memory cache until response caching is
-migrated separately. Transport and response failures remain strict invalid
-results reported as PKIX_FAILURE at the REVOCATION stage; provider messages
-are not parsed to infer whether a later responder should be attempted.
+This initial timeout layer applied when caching was disabled. The subsequent
+native response-cache layer extends the same per-request transport to default
+and custom in-memory cache TTLs. Disk cache, nonce, multiple responders,
+responder ordering, OCSPCheckingMode.IF_AVAILABLE, and CRL/OCSP combinations
+remain on the compatibility path. Transport and response failures remain
+strict invalid results reported as PKIX_FAILURE at the REVOCATION stage;
+provider messages are not parsed to infer whether a later responder should be
+attempted.
+
+
+NATIVE OCSP IN-MEMORY RESPONSE CACHE
+
+The previously migrated strict OCSP configurations now use a bounded,
+thread-safe, per-validator cache of encoded OCSP responses for every
+non-negative OCSPParametes cache TTL. A negative TTL continues to disable
+caching, and zero leaves expiry to response metadata. The cache contains at
+most 100 certificate/responder entries and expires each response at the
+earliest of the configured TTL, HTTP Cache-Control max-age, and OCSP
+nextUpdate. Cached byte arrays are copied at both cache boundaries.
+
+Only responses accepted by native BC are added. Every cache hit is supplied
+again to PKIXRevocationChecker.setOcspResponses(), so native BC revalidates the
+response against the current certificate, issuer, trust, status, and time.
+Rejected, forged, malformed, unknown, or revoked responses are not cached.
+The cache key includes the responder URI, checked certificate, issuer, and any
+explicit trusted responder certificate.
+
+OCSPParametes documents cache TTL in seconds, and the native cache now honors
+that unit; the legacy cache accidentally treated the same value as
+milliseconds. The default 3600 therefore means one hour, still capped by HTTP
+and OCSP response expiry. Persistent disk caching remains on the compatibility
+path for its dedicated migration layer. Nonce, multiple/responder ordering,
+OCSPCheckingMode.IF_AVAILABLE, and CRL/OCSP combinations remain unchanged on
+compatibility code.
 
 
 2.x HISTORICAL CHANGES
