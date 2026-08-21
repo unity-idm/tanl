@@ -456,7 +456,7 @@ public class OpensslCertChainValidatorTest
 	}
 
 	@Test
-	public void shouldKeepCustomTimeoutWithCachingOnCompatibilityPath()
+	public void shouldUseNativeCustomTimeoutAndMemoryCache()
 			throws Exception {
 		CA rootCA = given(aCertificateAuthority()
 				.selfSigned()
@@ -469,11 +469,42 @@ public class OpensslCertChainValidatorTest
 				.with(OCSPCheckingMode.REQUIRE)
 				.with(malformedResponder)
 				.withOCSPTimeout(250)
+				.withOCSPCacheTtl(42)
 				.with(CrlCheckingMode.IGNORE)
 				.withUpdateInterval(of(2, MINUTES))
 				.withLazyLoading());
 		X509Certificate serviceCertificate = given(anEEC()
 				.withSubject("DC=org, DC=example, CN=cached timeout OCSP host")
+				.signedBy(rootCA));
+
+		ValidationResult result = whenValidating(serviceCertificate);
+
+		assertThat(result.isValid(), is(false));
+		assertThat(result.getPrimaryError().getErrorCode(),
+				is(ValidationErrorCode.PKIX_FAILURE));
+		assertThat(result.getPrimaryError().getStage(),
+				is(ValidationStage.REVOCATION));
+	}
+
+	@Test
+	public void shouldKeepPersistentOCSPCacheOnCompatibilityPath()
+			throws Exception {
+		CA rootCA = given(aCertificateAuthority()
+				.selfSigned()
+				.withName("DC=org, DC=example, CN=disk cache OCSP root CA"));
+		given(anOpensslTrustStore().trustingCA(rootCA));
+		OCSPResponder malformedResponder = startMalformedOCSPResponder(
+				rootCA.getCertificate());
+
+		given(anOpensslCertChainValidator()
+				.with(OCSPCheckingMode.REQUIRE)
+				.with(malformedResponder)
+				.withOCSPDiskCache(trustStore.resolve("ocsp-cache"))
+				.with(CrlCheckingMode.IGNORE)
+				.withUpdateInterval(of(2, MINUTES))
+				.withLazyLoading());
+		X509Certificate serviceCertificate = given(anEEC()
+				.withSubject("DC=org, DC=example, CN=disk cache OCSP host")
 				.signedBy(rootCA));
 
 		ValidationResult result = whenValidating(serviceCertificate);
@@ -682,6 +713,7 @@ public class OpensslCertChainValidatorTest
 		private boolean useNonce;
 		private int ocspTimeout = OCSPParametes.DEFAULT_TIMEOUT;
 		private int ocspCacheTtl = OCSPParametes.DEFAULT_CACHE;
+		private Path ocspDiskCache;
 
 		public OpensslCertChainValidatorBuilder with(OCSPCheckingMode mode) {
 			ocspMode = requireNonNull(mode);
@@ -705,6 +737,16 @@ public class OpensslCertChainValidatorTest
 
 		public OpensslCertChainValidatorBuilder withoutOCSPCache() {
 			ocspCacheTtl = -1;
+			return this;
+		}
+
+		public OpensslCertChainValidatorBuilder withOCSPCacheTtl(int cacheTtl) {
+			ocspCacheTtl = cacheTtl;
+			return this;
+		}
+
+		public OpensslCertChainValidatorBuilder withOCSPDiskCache(Path diskCache) {
+			ocspDiskCache = requireNonNull(diskCache);
 			return this;
 		}
 
@@ -744,6 +786,8 @@ public class OpensslCertChainValidatorTest
 			ocspParameters.setUseNonce(useNonce);
 			ocspParameters.setConntectTimeout(ocspTimeout);
 			ocspParameters.setCacheTtl(ocspCacheTtl);
+			ocspParameters.setDiskCachePath(ocspDiskCache == null ? null :
+					ocspDiskCache.toString());
 			RevocationParameters revocationParams =
 					new RevocationParameters(crlCheckingMode, ocspParameters);
 			ValidatorParams validatorParams = new ValidatorParams(revocationParams, listeners);

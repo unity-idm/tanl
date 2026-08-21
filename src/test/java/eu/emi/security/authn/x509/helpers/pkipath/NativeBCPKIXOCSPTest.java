@@ -141,6 +141,67 @@ public class NativeBCPKIXOCSPTest
 	}
 
 	@Test
+	public void shouldReuseNativelyValidatedResponseFromMemoryCache() throws Exception
+	{
+		responderServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+		AtomicInteger queries = new AtomicInteger();
+		addResponse("/", response(null, rootKeyPair.getPrivate(),
+				new Date(System.currentTimeMillis() + 10 * MINUTE)), queries);
+		responderServer.start();
+		OCSPResponder responder = new OCSPResponder(responderURI("/").toURL(), root);
+
+		ValidationResult arrayResult = validator.validateWithOCSP(
+				new X509Certificate[] {target, root}, anchors, responder, 1000, 60);
+		ValidationResult pathResult = validator.validateWithOCSP(
+				path(target, root), anchors, responder, 1000, 60);
+
+		assertTrue(arrayResult.toString(), arrayResult.isValid());
+		assertTrue(pathResult.toString(), pathResult.isValid());
+		assertThat(queries.get(), is(1));
+	}
+
+	@Test
+	public void shouldNotCacheResponseRejectedByNativeValidation() throws Exception
+	{
+		responderServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+		AtomicInteger queries = new AtomicInteger();
+		addResponse("/", response(null, keyPair().getPrivate(),
+				new Date(System.currentTimeMillis() + 10 * MINUTE)), queries);
+		responderServer.start();
+		OCSPResponder responder = new OCSPResponder(responderURI("/").toURL(), root);
+
+		ValidationResult first = validator.validateWithOCSP(
+				new X509Certificate[] {target, root}, anchors, responder, 1000, 60);
+		ValidationResult second = validator.validateWithOCSP(
+				new X509Certificate[] {target, root}, anchors, responder, 1000, 60);
+
+		assertNativeOCSPFailure(first);
+		assertNativeOCSPFailure(second);
+		assertThat(queries.get(), is(2));
+	}
+
+	@Test
+	public void shouldHonorHTTPExpiryBeforeConfiguredCacheTtl() throws Exception
+	{
+		responderServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+		AtomicInteger queries = new AtomicInteger();
+		addResponse("/", response(null, rootKeyPair.getPrivate(),
+				new Date(System.currentTimeMillis() + 10 * MINUTE)), queries,
+				"max-age=0");
+		responderServer.start();
+		OCSPResponder responder = new OCSPResponder(responderURI("/").toURL(), root);
+
+		ValidationResult first = validator.validateWithOCSP(
+				new X509Certificate[] {target, root}, anchors, responder, 1000, 60);
+		ValidationResult second = validator.validateWithOCSP(
+				new X509Certificate[] {target, root}, anchors, responder, 1000, 60);
+
+		assertTrue(first.toString(), first.isValid());
+		assertTrue(second.toString(), second.isValid());
+		assertThat(queries.get(), is(2));
+	}
+
+	@Test
 	public void shouldApplyTimeoutWhileFetchingResponse() throws Exception
 	{
 		final CountDownLatch requestReceived = new CountDownLatch(1);
@@ -403,6 +464,12 @@ public class NativeBCPKIXOCSPTest
 	private void addResponse(String path, final byte[] response,
 			final AtomicInteger queries)
 	{
+		addResponse(path, response, queries, null);
+	}
+
+	private void addResponse(String path, final byte[] response,
+			final AtomicInteger queries, final String cacheControl)
+	{
 		responderServer.createContext(path, exchange -> {
 			try
 			{
@@ -412,6 +479,8 @@ public class NativeBCPKIXOCSPTest
 					// Consume the complete OCSP request before responding.
 				}
 				exchange.getResponseHeaders().set("Content-Type", "application/ocsp-response");
+				if (cacheControl != null)
+					exchange.getResponseHeaders().set("Cache-Control", cacheControl);
 				exchange.sendResponseHeaders(200, response.length);
 				exchange.getResponseBody().write(response);
 			} finally
