@@ -164,10 +164,9 @@ certificate is removed before validation, while successful ValidationResult
 chains include the selected anchor. An exact configured, self-signed trust
 anchor is accepted as a one-certificate input.
 
-This intermediate stacked change deliberately leaves CRL- or OCSP-enabled
-validation on the existing revocation implementation. Native revocation and
-the final error/listener contract are migrated in subsequent changes; OCSP
-configuration and behavior remain available during that migration.
+Strict CRL-only validation is migrated to native BC in the subsequent native
+CRL change. Other revocation configurations remain available on the existing
+compatibility path until their dedicated migration changes.
 
 
 PRIMARY VALIDATION ERROR CONTRACT
@@ -204,10 +203,36 @@ CommonX509TrustManager, SSLTrustManager, and
 SSLTrustManagerWithHostnameChecking now preserve the primary validation
 exception as the cause of their TLS-facing CertificateException.
 
-CRL- and OCSP-enabled calls continue to use the existing revocation engine in
-this intermediate branch. Their verdicts and OCSP behavior remain available,
-while their old detailed error catalogue is temporarily retained until native
+Revocation configurations not yet migrated continue to use the existing
+revocation engine. Their verdicts and OCSP behavior remain available, while
+their old detailed error catalogue is temporarily retained until native
 revocation replaces that path.
+
+
+NATIVE STRICT CRL VALIDATION
+
+Validation configured with CrlCheckingMode.REQUIRE and
+OCSPCheckingMode.IGNORE now uses the native BC CertPathValidator for strict CRL
+checking. The selected path is first validated with revocation disabled and is
+then validated against the configured CRL store, so a CRL failure is reported
+at the REVOCATION stage rather than as a path-building failure.
+
+The native validator retains all supplied certificate candidates for CRL
+issuer discovery and enables native delta-CRL processing. Missing, expired,
+malformed, badly signed, and revoking CRLs all fail strict validation. Separate
+and indirect CRL signer certificates and delta CRLs remain supported where BC
+can resolve them from the supplied certificate and CRL stores.
+
+BC 1.85 reports its CRL failures with an unspecified standard reason, including
+definitive revocation. Such failures therefore use PKIX_FAILURE, as required by
+the primary-error contract, while preserving REVOCATION stage, certificate
+position, provider message, and cause. Provider text is not parsed to infer a
+more specific code.
+
+CrlCheckingMode.IF_VALID, every OCSP-enabled configuration, mechanism ordering,
+and useAllEnabled continue through the compatibility implementation in this
+stacked change. OCSP support is unchanged. The IF_VALID/IF_PRESENT decision and
+native OCSP migration remain separate changes.
 
 
 2.x HISTORICAL CHANGES

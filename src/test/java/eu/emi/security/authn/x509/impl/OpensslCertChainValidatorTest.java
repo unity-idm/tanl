@@ -84,7 +84,9 @@ import eu.emi.security.authn.x509.OCSPCheckingMode;
 import eu.emi.security.authn.x509.OCSPParametes;
 import eu.emi.security.authn.x509.RevocationParameters;
 import eu.emi.security.authn.x509.StoreUpdateListener;
+import eu.emi.security.authn.x509.ValidationErrorCode;
 import eu.emi.security.authn.x509.ValidationResult;
+import eu.emi.security.authn.x509.ValidationStage;
 import eu.emi.security.authn.x509.helpers.ObserversHandler;
 import eu.emi.security.authn.x509.helpers.crl.LazyOpensslCRLStoreSpi;
 import eu.emi.security.authn.x509.helpers.trust.LazyOpensslTrustAnchorStoreImpl;
@@ -320,6 +322,38 @@ public class OpensslCertChainValidatorTest
 		assertThat(result.getUnresolvedCriticalExtensions(), is(empty()));
 	}
 
+	@Test
+	public void shouldRejectMalformedCRLInStrictMode() throws Exception {
+		CA rootCA = given(aCertificateAuthority()
+				.selfSigned()
+				.withName("DC=org, DC=example, CN=malformed CRL root CA"));
+		given(anOpensslTrustStore().trustingCA(rootCA));
+		String hash = OpensslTruststoreHelper.getOpenSSLCAHash(rootCA.getSubject());
+		Files.write(trustStore.resolve(hash + ".r0"),
+				"not a certificate revocation list".getBytes(StandardCharsets.US_ASCII));
+		List<Exception> loadingFailures =
+				Collections.synchronizedList(new ArrayList<Exception>());
+
+		given(anOpensslCertChainValidator()
+				.with(OCSPCheckingMode.IGNORE)
+				.with(CrlCheckingMode.REQUIRE)
+				.with(recordingCRLErrors(loadingFailures))
+				.withUpdateInterval(of(2, MINUTES))
+				.withLazyLoading());
+		X509Certificate serviceCertificate = given(anEEC()
+				.withSubject("DC=org, DC=example, CN=malformed CRL host")
+				.signedBy(rootCA));
+
+		ValidationResult result = whenValidating(serviceCertificate);
+
+		assertThat(result.isValid(), is(false));
+		assertThat(result.getPrimaryError().getErrorCode(),
+				is(ValidationErrorCode.PKIX_FAILURE));
+		assertThat(result.getPrimaryError().getStage(),
+				is(ValidationStage.REVOCATION));
+		assertThat(loadingFailures.size(), is(1));
+	}
+
 	private ValidationResult whenValidating(X509Certificate... certificates) {
 		return validator.validate(certificates);
 	}
@@ -345,6 +379,18 @@ public class OpensslCertChainValidatorTest
 					Severity level, Exception cause) {
 				if (level == Severity.NOTIFICATION) {
 					loadedTypes.add(type);
+				}
+			}
+		};
+	}
+
+	private StoreUpdateListener recordingCRLErrors(final List<Exception> failures) {
+		return new StoreUpdateListener() {
+			@Override
+			public void loadingNotification(String location, String type,
+					Severity level, Exception cause) {
+				if (StoreUpdateListener.CRL.equals(type) && level == Severity.ERROR) {
+					failures.add(cause);
 				}
 			}
 		};
