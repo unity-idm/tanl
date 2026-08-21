@@ -441,6 +441,56 @@ public class OpensslCertChainValidatorTest
 	}
 
 	@Test
+	public void shouldUseNativeOCSPIfAvailableWithoutAResponder()
+			throws Exception {
+		CA rootCA = given(aCertificateAuthority()
+				.selfSigned()
+				.withName("DC=org, DC=example, CN=optional OCSP root CA"));
+		given(anOpensslTrustStore().trustingCA(rootCA));
+		given(anOpensslCertChainValidator()
+				.with(OCSPCheckingMode.IF_AVAILABLE)
+				.with(CrlCheckingMode.IGNORE)
+				.withUpdateInterval(of(2, MINUTES))
+				.withLazyLoading());
+		X509Certificate serviceCertificate = given(anEEC()
+				.withSubject("DC=org, DC=example, CN=optional OCSP host")
+				.signedBy(rootCA));
+
+		ValidationResult result = whenValidating(serviceCertificate);
+
+		assertThat(result.toString(), result.isValid(), is(true));
+	}
+
+	@Test
+	public void shouldRejectMalformedNativeOCSPResponseInIfAvailableMode()
+			throws Exception {
+		CA rootCA = given(aCertificateAuthority()
+				.selfSigned()
+				.withName("DC=org, DC=example, CN=optional strict OCSP root CA"));
+		given(anOpensslTrustStore().trustingCA(rootCA));
+		OCSPResponder malformedResponder = startMalformedOCSPResponder(
+				rootCA.getCertificate());
+
+		given(anOpensslCertChainValidator()
+				.with(OCSPCheckingMode.IF_AVAILABLE)
+				.with(malformedResponder)
+				.with(CrlCheckingMode.IGNORE)
+				.withUpdateInterval(of(2, MINUTES))
+				.withLazyLoading());
+		X509Certificate serviceCertificate = given(anEEC()
+				.withSubject("DC=org, DC=example, CN=optional strict OCSP host")
+				.signedBy(rootCA));
+
+		ValidationResult result = whenValidating(serviceCertificate);
+
+		assertThat(result.isValid(), is(false));
+		assertThat(result.getPrimaryError().getErrorCode(),
+				is(ValidationErrorCode.PKIX_FAILURE));
+		assertThat(result.getPrimaryError().getStage(),
+				is(ValidationStage.REVOCATION));
+	}
+
+	@Test
 	public void shouldUseNativeNonceOCSPValidation() throws Exception {
 		CA rootCA = given(aCertificateAuthority()
 				.selfSigned()

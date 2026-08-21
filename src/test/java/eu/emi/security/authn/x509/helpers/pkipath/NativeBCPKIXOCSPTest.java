@@ -669,6 +669,116 @@ public class NativeBCPKIXOCSPTest
 	}
 
 	@Test
+	public void shouldAcceptMissingResponderWhenOCSPIsIfAvailable()
+			throws Exception
+	{
+		ValidationResult arrayResult = validator.validateWithOCSPIfAvailable(
+				new X509Certificate[] {target, root}, anchors,
+				new OCSPResponder[0], true, 1000, -1, null, false);
+		ValidationResult pathResult = validator.validateWithOCSPIfAvailable(
+				path(target, root), anchors, new OCSPResponder[0], false, 1000,
+				-1, null, false);
+
+		assertTrue(arrayResult.toString(), arrayResult.isValid());
+		assertTrue(pathResult.toString(), pathResult.isValid());
+		assertThat(arrayResult.getValidChain(), contains(target, root));
+		assertThat(pathResult.getValidChain(), contains(target, root));
+	}
+
+	@Test
+	public void shouldValidateGoodResponseWhenOCSPIsIfAvailable()
+			throws Exception
+	{
+		OCSPResponder responder = startResponder(response(null,
+				rootKeyPair.getPrivate(),
+				new Date(System.currentTimeMillis() + 10 * MINUTE)));
+
+		ValidationResult result = validator.validateWithOCSPIfAvailable(
+				new X509Certificate[] {target, root}, anchors,
+				new OCSPResponder[] {responder}, true, 1000, 60, null, false);
+
+		assertTrue(result.toString(), result.isValid());
+		assertThat(result.getValidChain(), contains(target, root));
+	}
+
+	@Test
+	public void shouldAcceptExhaustedTransportFailuresWhenOCSPIsIfAvailable()
+			throws Exception
+	{
+		responderServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+		AtomicInteger firstQueries = new AtomicInteger();
+		AtomicInteger secondQueries = new AtomicInteger();
+		addUnavailableResponse("/optional-unavailable-first", firstQueries);
+		addUnavailableResponse("/optional-unavailable-second", secondQueries);
+		responderServer.start();
+		OCSPResponder[] responders = {
+				new OCSPResponder(responderURI(
+						"/optional-unavailable-first").toURL(), root),
+				new OCSPResponder(responderURI(
+						"/optional-unavailable-second").toURL(), root)};
+
+		ValidationResult result = validator.validateWithOCSPIfAvailable(
+				new X509Certificate[] {target, root}, anchors, responders, true,
+				1000, -1, null, false);
+
+		assertTrue(result.toString(), result.isValid());
+		assertThat(firstQueries.get(), is(1));
+		assertThat(secondQueries.get(), is(1));
+	}
+
+	@Test
+	public void shouldRejectMalformedResponseWhenOCSPIsIfAvailable()
+			throws Exception
+	{
+		responderServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+		AtomicInteger queries = new AtomicInteger();
+		addResponse("/optional-malformed", new byte[] {1, 2, 3, 4}, queries);
+		responderServer.start();
+		OCSPResponder responder = new OCSPResponder(
+				responderURI("/optional-malformed").toURL(), root);
+
+		ValidationResult result = validator.validateWithOCSPIfAvailable(
+				path(target, root), anchors, new OCSPResponder[] {responder}, true,
+				1000, -1, null, false);
+
+		assertNativeOCSPFailure(result, 0, false);
+		assertTrue(result.getPrimaryError().getCause() instanceof
+				OCSPResponseDecodingException);
+		assertThat(queries.get(), is(1));
+	}
+
+	@Test
+	public void shouldRejectUnknownResponseWhenOCSPIsIfAvailable()
+			throws Exception
+	{
+		OCSPResponder responder = startResponder(response(new UnknownStatus(),
+				rootKeyPair.getPrivate(),
+				new Date(System.currentTimeMillis() + 10 * MINUTE)));
+
+		ValidationResult result = validator.validateWithOCSPIfAvailable(
+				new X509Certificate[] {target, root}, anchors,
+				new OCSPResponder[] {responder}, true, 1000, -1, null, false);
+
+		assertNativeOCSPFailure(result);
+	}
+
+	@Test
+	public void shouldRejectRevokedResponseWhenOCSPIsIfAvailable()
+			throws Exception
+	{
+		OCSPResponder responder = startResponder(response(new RevokedStatus(
+				new Date(System.currentTimeMillis() - MINUTE), 1),
+				rootKeyPair.getPrivate(),
+				new Date(System.currentTimeMillis() + 10 * MINUTE)));
+
+		ValidationResult result = validator.validateWithOCSPIfAvailable(
+				path(target, root), anchors, new OCSPResponder[] {responder}, true,
+				1000, -1, null, false);
+
+		assertNativeOCSPFailure(result);
+	}
+
+	@Test
 	public void shouldNotShareTransportFailuresBetweenResponders() throws Exception
 	{
 		responderServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
