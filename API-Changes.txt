@@ -235,6 +235,35 @@ stacked change. OCSP support is unchanged. The IF_VALID/IF_PRESENT decision and
 native OCSP migration remain separate changes.
 
 
+NATIVE REQUIRED OCSP VALIDATION
+
+Validation configured with CrlCheckingMode.IGNORE and
+OCSPCheckingMode.REQUIRE now uses a native BC PKIXRevocationChecker for a
+narrow core configuration: exactly one explicit OCSPResponder, no Authority
+Information Access extension on any supplied certificate, default responder
+settings, and no nonce or persistent cache. Both certificate-array and
+asserted-CertPath inputs are supported.
+
+Base path validation and strict OCSP checking are separate passes. The OCSP
+pass explicitly adds BC's PKIXRevocationChecker with NO_FALLBACK while leaving
+ordinary PKIX revocation disabled, preventing an unintended CRL fallback.
+Good responses validate; revoked, unknown, expired, malformed, and badly
+signed responses fail.
+
+BC 1.85 exposes no standard reason for the observed OCSP failures, including
+definitive revocation, so they use PKIX_FAILURE at the REVOCATION stage while
+retaining the provider cause, message, and position where available. Provider
+text is not parsed. Malformed response bytes can fail before a certificate
+index is assigned and therefore retain position -1.
+
+Configurations using AIA discovery, multiple responders, non-default timeout
+or cache controls, nonce, OCSPCheckingMode.IF_AVAILABLE, CRL/OCSP combinations,
+mechanism ordering, or useAllEnabled remain on the compatibility path. The
+migrated core currently uses BC's native 15-second transport timeout and weak
+in-memory response cache; transport controls, caching, and responder discovery
+remain separate migration layers.
+
+
 2.x HISTORICAL CHANGES
 
 1) changed semantics of the DN compare methods operating on the string representation.
