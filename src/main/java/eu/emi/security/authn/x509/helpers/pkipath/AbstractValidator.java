@@ -11,19 +11,19 @@ import java.security.cert.CertificateException;
 import java.security.cert.TrustAnchor;
 import java.security.cert.X509Certificate;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
-import eu.emi.security.authn.x509.RevocationParameters;
 import eu.emi.security.authn.x509.CrlCheckingMode;
 import eu.emi.security.authn.x509.OCSPCheckingMode;
+import eu.emi.security.authn.x509.RevocationParameters;
 import eu.emi.security.authn.x509.StoreUpdateListener;
 import eu.emi.security.authn.x509.ValidationError;
 import eu.emi.security.authn.x509.ValidationErrorCode;
 import eu.emi.security.authn.x509.ValidationErrorListener;
 import eu.emi.security.authn.x509.ValidationResult;
+import eu.emi.security.authn.x509.ValidationStage;
 import eu.emi.security.authn.x509.X509CertChainValidator;
 import eu.emi.security.authn.x509.X509CertChainValidatorExt;
 import eu.emi.security.authn.x509.helpers.ObserversHandler;
@@ -100,23 +100,24 @@ public abstract class AbstractValidator implements X509CertChainValidatorExt
 	@Override
 	public ValidationResult validate(CertPath certPath)
 	{
+		if (isDisposed())
+			throw new IllegalStateException("The validator instance was disposed");
 		if (certPath == null)
-			throw new IllegalArgumentException("Certificate path must not be null");
+			return processInputError(null,
+					new IllegalArgumentException("Certificate path must not be null"));
 		List<? extends Certificate> certs = certPath.getCertificates();
 		X509Certificate[] certsA = new X509Certificate[certs.size()];
 		for (int i=0; i<certsA.length; i++)
 		{
 			Certificate c = certs.get(i);
 			if (!(c instanceof X509Certificate))
-				throw new IllegalArgumentException("Can validate only " +
+				return processInputError(certsA, new IllegalArgumentException("Can validate only " +
 						"X509Certificate chains. Found instance of: " + 
-						c.getClass().getName());
+						c.getClass().getName()));
 			certsA[i] = (X509Certificate) c;
 		}
 		if (isNativeBaseValidation())
 		{
-			if (isDisposed())
-				throw new IllegalStateException("The validator instance was disposed");
 			try
 			{
 				return processResult(nativeValidator.validate(certPath, getTrustAnchors(certsA)));
@@ -167,39 +168,19 @@ public abstract class AbstractValidator implements X509CertChainValidatorExt
 					OCSPCheckingMode.IGNORE;
 	}
 
-	private ValidationResult processInputError(X509Certificate[] certChain, CertificateException e)
+	private ValidationResult processInputError(X509Certificate[] certChain, Throwable failure)
 	{
-		ValidationError error = new ValidationError(certChain, -1, ValidationErrorCode.inputError,
-				e.toString());
-		return processResult(new ValidationResult(false, Collections.singletonList(error)));
+		ValidationError error = new ValidationError(certChain, -1,
+				ValidationErrorCode.INVALID_INPUT, ValidationStage.INPUT,
+				failure.getMessage(), failure);
+		return processResult(ValidationResult.invalid(error));
 	}
 
 	private ValidationResult processResult(ValidationResult result)
 	{
 		if (!result.isValid())
-		{
-			List<ValidationError> errors = result.getErrors();
-			processErrorList(errors);
-			result.setErrors(errors);
-			if (result.getErrors().size() == 0 && 
-					result.getUnresolvedCriticalExtensions().size() == 0)
-				return new ValidationResult(true);
-		}
-		
+			notifyListeners(result.getPrimaryError());
 		return result;
-	}
-	
-	protected void processErrorList(List<ValidationError> errors)
-	{
-		for (int i=0; i<errors.size(); i++)
-		{
-			boolean res = notifyListeners(errors.get(i));
-			if (res)
-			{
-				errors.remove(i);
-				i--;
-			}
-		}
 	}
 	
 	/**
@@ -215,17 +196,14 @@ public abstract class AbstractValidator implements X509CertChainValidatorExt
 	/**
 	 * Notifies all registered listeners.
 	 * @param error validation error
-	 * @return true if the error should be ignored false otherwise.
 	 */
-	protected boolean notifyListeners(ValidationError error)
+	protected void notifyListeners(ValidationError error)
 	{
 		synchronized (listeners)
 		{
 			for (ValidationErrorListener listener: listeners)
-				if (listener.onValidationError(error))
-					return true;
+				listener.onValidationError(error);
 		}
-		return false;
 	}
 	
 	/**

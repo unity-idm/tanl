@@ -16,6 +16,29 @@ package eu.emi.security.authn.x509;
  */
 public enum ValidationErrorCode
 {
+	INVALID_INPUT,
+	PATH_BUILDING_FAILED,
+	NO_TRUST_ANCHOR,
+	CERTIFICATE_EXPIRED,
+	CERTIFICATE_NOT_YET_VALID,
+	INVALID_SIGNATURE,
+	ALGORITHM_CONSTRAINED,
+	INVALID_NAME_CHAINING,
+	INVALID_KEY_USAGE,
+	NOT_CA,
+	PATH_TOO_LONG,
+	INVALID_NAME_CONSTRAINT,
+	INVALID_POLICY,
+	UNRESOLVED_CRITICAL_EXTENSION,
+	CERTIFICATE_REVOKED,
+	UNDETERMINED_REVOCATION_STATUS,
+	PKIX_FAILURE,
+
+	/*
+	 * Legacy reviewer codes remain temporarily for the revocation compatibility
+	 * path. Native validation never emits them, and the native-revocation change
+	 * removes the remaining callers.
+	 */
 	unknown,
 	unknownMsg,
 	

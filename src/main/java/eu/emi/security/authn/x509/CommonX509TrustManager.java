@@ -37,7 +37,7 @@ public class CommonX509TrustManager implements X509TrustManager
 		ValidationResult result = validator.validate(chain);
 		if (result.isValid())
 			return;
-		throw new CertificateException(result.toString());
+		throw validationException(result);
 	}
 
 	/**
@@ -49,7 +49,15 @@ public class CommonX509TrustManager implements X509TrustManager
 		ValidationResult result = validator.validate(chain);
 		if (result.isValid())
 			return;
-		throw new CertificateException(result.toString());
+		throw validationException(result);
+	}
+
+	private CertificateException validationException(ValidationResult result)
+	{
+		ValidationError primaryError = result.getPrimaryError();
+		Throwable cause = primaryError == null ? null : primaryError.getCause();
+		return cause == null ? new CertificateException(result.toString()) :
+				new CertificateException(result.toString(), cause);
 	}
 
 	/**

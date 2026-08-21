@@ -17,6 +17,12 @@ import java.util.Properties;
  */
 public enum ValidationErrorCategory
 {
+	INPUT,
+	PATH,
+	CERTIFICATE,
+	REVOCATION,
+
+	/* Legacy reviewer categories retained until native revocation is complete. */
 	GENERAL_INPUT,
 	X509_BASIC,
 	X509_CHAIN,

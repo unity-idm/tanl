@@ -127,20 +127,18 @@ public class TestKSValidators
 		
 		ValidationErrorListener l1 = new ValidationErrorListener()
 		{
-			public boolean onValidationError(ValidationError error)
+			public void onValidationError(ValidationError error)
 			{
 				vError++;
 				System.out.println("L1: " + error);
-				return false;
 			}
 		};
 		ValidationErrorListener l2 = new ValidationErrorListener()
 		{
-			public boolean onValidationError(ValidationError error)
+			public void onValidationError(ValidationError error)
 			{
 				vError++;
 				System.out.println("L2: " + error);
-				return true;
 			}
 		};
 		validator1.addValidationListener(l1);
@@ -153,13 +151,13 @@ public class TestKSValidators
 		validator1.addValidationListener(l2);
 		vError = 0;
 		ValidationResult res1 = validator1.validate(toValidate);
-		assertTrue(res1.getErrors().toString(), res1.isValid());
+		assertFalse(res1.getErrors().toString(), res1.isValid());
 		assertEquals(2, vError);
 		
 		validator1.removeValidationListener(l1);
 		vError = 0;
 		ValidationResult res2 = validator1.validate(toValidate);
-		assertTrue(res2.isValid());
+		assertFalse(res2.isValid());
 		assertEquals(1, vError);
 		
 		validator1.dispose();

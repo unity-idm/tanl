@@ -6,6 +6,7 @@ package eu.emi.security.authn.x509.helpers.pkipath;
 
 import java.security.InvalidAlgorithmParameterException;
 import java.security.cert.CertPath;
+import java.security.cert.CertPathBuilderException;
 import java.security.cert.CertStore;
 import java.security.cert.Certificate;
 import java.security.cert.CertificateException;
@@ -33,6 +34,7 @@ import eu.emi.security.authn.x509.RevocationParameters;
 import eu.emi.security.authn.x509.ValidationError;
 import eu.emi.security.authn.x509.ValidationErrorCode;
 import eu.emi.security.authn.x509.ValidationResult;
+import eu.emi.security.authn.x509.ValidationStage;
 import eu.emi.security.authn.x509.helpers.CertificateHelpers;
 import eu.emi.security.authn.x509.helpers.ObserversHandler;
 import eu.emi.security.authn.x509.helpers.pkipath.bc.FixedBCPKIXCertPathReviewer;
@@ -79,24 +81,33 @@ public class BCCertPathValidator
 			throws CertificateException
 	{
 		if (toCheck == null || toCheck.length == 0)
-			throw new IllegalArgumentException("Chain to be validated must be non-empty");
+		{
+			IllegalArgumentException failure = new IllegalArgumentException(
+					"Chain to be validated must be non-empty");
+			return ValidationResult.invalid(new ValidationError(toCheck, -1,
+					ValidationErrorCode.INVALID_INPUT, ValidationStage.INPUT,
+					failure.getMessage(), failure));
+		}
 		
 		List<ValidationError> errors = new ArrayList<ValidationError>();
 		Set<String> unresolvedExtensions = new HashSet<String>();
 
-		if (trustAnchors.isEmpty())
+		if (trustAnchors == null || trustAnchors.isEmpty())
 		{
 			//Empty trust anchors set is fine for ExtPKIXParameters but not for plain PKIXParameters.
 			//Make a proper error and return it instead of an opaque exception.
-			errors.add(new ValidationError(toCheck, -1, ValidationErrorCode.noTrustAnchorFound));
-			errors.add(new ValidationError(toCheck, 0, ValidationErrorCode.noIssuerPublicKey));
-			return new ValidationResult(false, errors, unresolvedExtensions, null);
+			CertPathBuilderException failure = new CertPathBuilderException(
+					"No trust anchors are configured");
+			return ValidationResult.invalid(new ValidationError(toCheck, -1,
+					ValidationErrorCode.NO_TRUST_ANCHOR, ValidationStage.PATH_BUILDING,
+					failure.getMessage(), failure));
 		}
 
 		ExtPKIXParameters2 params = createPKIXParameters(toCheck,
 				trustAnchors, crlStore, revocationParams, observersHandler);
 		List<X509Certificate> chain = checkChain(toCheck, params, errors, unresolvedExtensions, 0, toCheck);
-		return new ValidationResult(errors.size() == 0, errors, unresolvedExtensions, chain);
+		return errors.isEmpty() ? ValidationResult.valid(chain) :
+				ValidationResult.invalid(errors.get(0), unresolvedExtensions);
 	}
 	
 	protected ExtPKIXParameters2 createPKIXParameters(X509Certificate[] toCheck,
