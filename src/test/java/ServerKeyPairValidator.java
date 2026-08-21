@@ -20,20 +20,20 @@ import java.security.cert.X509Certificate;
  *   java ServerKeyPairValidator \
  *        /path/to/server.key \
  *        /path/to/server.crt \
- *        /path/to/custom/certifificates
+ *        /path/to/openssl-truststore
  */
 public class ServerKeyPairValidator {
 
     public static void main(String[] args) throws Exception {
 
-        if (args.length < 2) {
-            System.err.println("Usage: ServerKeyPairValidator <keyPath> <certPath> [caDir]");
+        if (args.length < 3) {
+            System.err.println("Usage: ServerKeyPairValidator <keyPath> <certPath> <caDir>");
             System.exit(1);
         }
 
         String keyPath  = args[0];
         String certPath = args[1];
-        String caDir    = args.length >= 3 ? args[2] : "/etc/grid-security/certificates";
+        String caDir    = args[2];
 
         // 1. Load credential — also verifies key matches certificate internally
         PEMCredential credential;
