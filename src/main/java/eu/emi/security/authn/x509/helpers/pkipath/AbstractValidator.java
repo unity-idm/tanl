@@ -151,6 +151,16 @@ public abstract class AbstractValidator implements X509CertChainValidatorExt
 				return processInputError(certsA, e);
 			}
 		}
+		if (isNativeCombinedRevocationValidation())
+		{
+			try
+			{
+				return processResult(validateNativeRevocation(certPath, anchors));
+			} catch (CertificateException e)
+			{
+				return processInputError(certsA, e);
+			}
+		}
 		return validate(certsA);	
 	}
 
@@ -183,6 +193,8 @@ public abstract class AbstractValidator implements X509CertChainValidatorExt
 						new SimpleCRLStore(crlStore));
 			else if (isNativeOCSPValidation())
 				result = validateNativeOCSP(certChain, anchors);
+			else if (isNativeCombinedRevocationValidation())
+				result = validateNativeRevocation(certChain, anchors);
 			else
 				result = validator.validate(certChain, anchors,
 						new SimpleCRLStore(crlStore), revocationMode, observers);
@@ -211,7 +223,17 @@ public abstract class AbstractValidator implements X509CertChainValidatorExt
 	{
 		if (revocationMode.getCrlCheckingMode() != CrlCheckingMode.IGNORE)
 			return false;
-		OCSPParametes parameters = revocationMode.getOcspParameters();
+		return hasNativeOCSPConfiguration(revocationMode.getOcspParameters());
+	}
+
+	private boolean isNativeCombinedRevocationValidation()
+	{
+		return revocationMode.getCrlCheckingMode() == CrlCheckingMode.REQUIRE &&
+				hasNativeOCSPConfiguration(revocationMode.getOcspParameters());
+	}
+
+	private boolean hasNativeOCSPConfiguration(OCSPParametes parameters)
+	{
 		if (parameters == null || parameters.getCheckingMode() == OCSPCheckingMode.IGNORE)
 			return false;
 		OCSPResponder[] responders = parameters.getLocalResponders();
@@ -263,6 +285,30 @@ public abstract class AbstractValidator implements X509CertChainValidatorExt
 				parameters.getLocalResponders(), parameters.isPreferLocalResponders(),
 				getOCSPTimeout(), getOCSPCacheTtl(), getOCSPDiskCachePath(),
 				usesOCSPNonce());
+	}
+
+	private ValidationResult validateNativeRevocation(X509Certificate[] certificates,
+			Set<TrustAnchor> anchors) throws CertificateException
+	{
+		OCSPParametes parameters = revocationMode.getOcspParameters();
+		return nativeValidator.validateWithCRLsAndOCSP(certificates, anchors,
+				new SimpleCRLStore(crlStore), parameters.getCheckingMode(),
+				parameters.getLocalResponders(), parameters.isPreferLocalResponders(),
+				getOCSPTimeout(), getOCSPCacheTtl(), getOCSPDiskCachePath(),
+				usesOCSPNonce(), revocationMode.isUseAllEnabled(),
+				revocationMode.getOrder());
+	}
+
+	private ValidationResult validateNativeRevocation(CertPath path,
+			Set<TrustAnchor> anchors) throws CertificateException
+	{
+		OCSPParametes parameters = revocationMode.getOcspParameters();
+		return nativeValidator.validateWithCRLsAndOCSP(path, anchors,
+				new SimpleCRLStore(crlStore), parameters.getCheckingMode(),
+				parameters.getLocalResponders(), parameters.isPreferLocalResponders(),
+				getOCSPTimeout(), getOCSPCacheTtl(), getOCSPDiskCachePath(),
+				usesOCSPNonce(), revocationMode.isUseAllEnabled(),
+				revocationMode.getOrder());
 	}
 
 	private int getOCSPTimeout()

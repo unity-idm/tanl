@@ -491,6 +491,35 @@ public class OpensslCertChainValidatorTest
 	}
 
 	@Test
+	public void shouldUseNativeCombinedOCSPAndCRLPolicy()
+			throws Exception {
+		CA rootCA = given(aCertificateAuthority()
+				.selfSigned()
+				.withName("DC=org, DC=example, CN=combined policy root CA"));
+		given(anOpensslTrustStore().trustingCA(rootCA));
+		OCSPResponder malformedResponder = startMalformedOCSPResponder(
+				rootCA.getCertificate());
+
+		given(anOpensslCertChainValidator()
+				.with(OCSPCheckingMode.IF_AVAILABLE)
+				.with(malformedResponder)
+				.with(CrlCheckingMode.REQUIRE)
+				.withUpdateInterval(of(2, MINUTES))
+				.withLazyLoading());
+		X509Certificate serviceCertificate = given(anEEC()
+				.withSubject("DC=org, DC=example, CN=combined policy host")
+				.signedBy(rootCA));
+
+		ValidationResult result = whenValidating(serviceCertificate);
+
+		assertThat(result.isValid(), is(false));
+		assertThat(result.getPrimaryError().getErrorCode(),
+				is(ValidationErrorCode.PKIX_FAILURE));
+		assertThat(result.getPrimaryError().getStage(),
+				is(ValidationStage.REVOCATION));
+	}
+
+	@Test
 	public void shouldUseNativeNonceOCSPValidation() throws Exception {
 		CA rootCA = given(aCertificateAuthority()
 				.selfSigned()
