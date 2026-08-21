@@ -75,6 +75,25 @@ public class OCSPClientImpl
 	private static final Charset ASCII = Charset.forName("US-ASCII");
 	private static final int MAX_RESPONSE_SIZE = 20480;
 	private static final SecureRandom NONCE_RANDOM = new SecureRandom();
+
+	/**
+	 * Indicates that bytes received from a responder can not be decoded as a
+	 * bounded OCSP response. This is distinct from an HTTP transport failure.
+	 */
+	public static class OCSPResponseDecodingException extends IOException
+	{
+		private static final long serialVersionUID = 1L;
+
+		private OCSPResponseDecodingException(String message)
+		{
+			super(message);
+		}
+
+		private OCSPResponseDecodingException(String message, Throwable cause)
+		{
+			super(message, cause);
+		}
+	}
 	
 	/**
 	 * Returns a verified single response, related to the checked certificate. This is single-shot version, 
@@ -183,7 +202,8 @@ public class OCSPClientImpl
 				total += count;
 			}
 			if (count >= 0 && in.read() >= 0)
-				throw new IOException("OCSP response size exceeded the upper limit of " + 
+				throw new OCSPResponseDecodingException(
+						"OCSP response size exceeded the upper limit of " +
 						MAX_RESPONSE_SIZE);
 			if (total != contentLength)
 				response = Arrays.copyOf(response, total);
@@ -196,7 +216,15 @@ public class OCSPClientImpl
 				}
 			}
 		}
-		OCSPResp resp = new OCSPResp(response);
+		OCSPResp resp;
+		try
+		{
+			resp = new OCSPResp(response);
+		} catch (IOException e)
+		{
+			throw new OCSPResponseDecodingException(
+					"Can not decode the OCSP response", e);
+		}
 		return new OCSPResponseStructure(resp, maxCache);
 	}
 	
@@ -505,8 +533,6 @@ public class OCSPClientImpl
 		return octs.getOctets();			
 	}
 }
-
-
 
 
 

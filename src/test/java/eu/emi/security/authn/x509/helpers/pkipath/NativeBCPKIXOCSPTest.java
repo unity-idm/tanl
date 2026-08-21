@@ -82,6 +82,7 @@ import eu.emi.security.authn.x509.ValidationError;
 import eu.emi.security.authn.x509.ValidationErrorCode;
 import eu.emi.security.authn.x509.ValidationResult;
 import eu.emi.security.authn.x509.ValidationStage;
+import eu.emi.security.authn.x509.helpers.ocsp.OCSPClientImpl.OCSPResponseDecodingException;
 import eu.emi.security.authn.x509.impl.CertificateUtils;
 
 public class NativeBCPKIXOCSPTest
@@ -501,6 +502,94 @@ public class NativeBCPKIXOCSPTest
 	}
 
 	@Test
+	public void shouldFallbackFromUnavailableConfiguredToDiscoveredResponders()
+			throws Exception
+	{
+		responderServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+		URI unavailableURI = responderURI("/unavailable-local");
+		URI secondUnavailableURI = responderURI("/second-unavailable-local");
+		URI discoveredURI = responderURI("/available-discovered");
+		X509Certificate aiaTarget = certificate("CN=Fallback OCSP Target",
+				"CN=Native OCSP Root", BigInteger.valueOf(31), keyPair().getPublic(),
+				rootKeyPair.getPrivate(), false, false, discoveredURI);
+		AtomicInteger unavailableQueries = new AtomicInteger();
+		AtomicInteger secondUnavailableQueries = new AtomicInteger();
+		AtomicInteger discoveredQueries = new AtomicInteger();
+		addUnavailableResponse("/unavailable-local", unavailableQueries);
+		addUnavailableResponse("/second-unavailable-local",
+				secondUnavailableQueries);
+		addResponse("/available-discovered", response(aiaTarget, root, null,
+				rootKeyPair.getPrivate(), rootKeyPair.getPublic(),
+				new Date(System.currentTimeMillis() + 10 * MINUTE)), discoveredQueries);
+		responderServer.start();
+
+		ValidationResult result = validator.validateWithOCSP(
+				new X509Certificate[] {aiaTarget, root}, anchors,
+				new OCSPResponder[] {
+						new OCSPResponder(unavailableURI.toURL(), root),
+						new OCSPResponder(secondUnavailableURI.toURL(), root)},
+				true, 1000, -1, null, false);
+
+		assertTrue(result.toString(), result.isValid());
+		assertThat(unavailableQueries.get(), is(1));
+		assertThat(secondUnavailableQueries.get(), is(1));
+		assertThat(discoveredQueries.get(), is(1));
+	}
+
+	@Test
+	public void shouldNotFallbackFromMalformedResponseBytes() throws Exception
+	{
+		responderServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+		AtomicInteger malformedQueries = new AtomicInteger();
+		AtomicInteger goodQueries = new AtomicInteger();
+		addResponse("/malformed-first", new byte[] {1, 2, 3, 4}, malformedQueries);
+		addResponse("/good-second", response(null, rootKeyPair.getPrivate(),
+				new Date(System.currentTimeMillis() + 10 * MINUTE)), goodQueries);
+		responderServer.start();
+		OCSPResponder[] responders = {
+				new OCSPResponder(responderURI("/malformed-first").toURL(), root),
+				new OCSPResponder(responderURI("/good-second").toURL(), root)};
+
+		ValidationResult result = validator.validateWithOCSP(
+				new X509Certificate[] {target, root}, anchors, responders, true,
+				1000, -1, null, false);
+
+		assertNativeOCSPFailure(result, 0, false);
+		assertTrue(result.getPrimaryError().getCause() instanceof
+				OCSPResponseDecodingException);
+		assertThat(malformedQueries.get(), is(1));
+		assertThat(goodQueries.get(), is(0));
+	}
+
+	@Test
+	public void shouldFallbackFromUnavailableDiscoveredToConfiguredResponder()
+			throws Exception
+	{
+		responderServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+		URI discoveredURI = responderURI("/unavailable-discovered");
+		URI localURI = responderURI("/available-local");
+		X509Certificate aiaTarget = certificate("CN=Reverse Fallback OCSP Target",
+				"CN=Native OCSP Root", BigInteger.valueOf(32), keyPair().getPublic(),
+				rootKeyPair.getPrivate(), false, false, discoveredURI);
+		AtomicInteger discoveredQueries = new AtomicInteger();
+		AtomicInteger localQueries = new AtomicInteger();
+		addUnavailableResponse("/unavailable-discovered", discoveredQueries);
+		addResponse("/available-local", response(aiaTarget, root, null,
+				rootKeyPair.getPrivate(), rootKeyPair.getPublic(),
+				new Date(System.currentTimeMillis() + 10 * MINUTE)), localQueries);
+		responderServer.start();
+
+		ValidationResult result = validator.validateWithOCSP(
+				path(aiaTarget, root), anchors,
+				new OCSPResponder[] {new OCSPResponder(localURI.toURL(), root)},
+				false, 1000, -1, null, false);
+
+		assertTrue(result.toString(), result.isValid());
+		assertThat(discoveredQueries.get(), is(1));
+		assertThat(localQueries.get(), is(1));
+	}
+
+	@Test
 	public void shouldReportDiscoveredResponderFailureAtOriginalPathPosition()
 			throws Exception
 	{
@@ -720,6 +809,24 @@ public class NativeBCPKIXOCSPTest
 					exchange.getResponseHeaders().set("Cache-Control", cacheControl);
 				exchange.sendResponseHeaders(200, response.length);
 				exchange.getResponseBody().write(response);
+			} finally
+			{
+				exchange.close();
+			}
+		});
+	}
+
+	private void addUnavailableResponse(String path, final AtomicInteger queries)
+	{
+		responderServer.createContext(path, exchange -> {
+			try
+			{
+				queries.incrementAndGet();
+				while (exchange.getRequestBody().read() >= 0)
+				{
+					// Consume the complete OCSP request before responding.
+				}
+				exchange.sendResponseHeaders(503, -1);
 			} finally
 			{
 				exchange.close();
