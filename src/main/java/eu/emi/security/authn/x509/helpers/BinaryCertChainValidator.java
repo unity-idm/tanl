@@ -5,15 +5,20 @@
 package eu.emi.security.authn.x509.helpers;
 
 import java.security.cert.CertPath;
+import java.security.cert.CertPathValidatorException;
 import java.security.cert.X509Certificate;
+import java.util.Arrays;
 
 import eu.emi.security.authn.x509.CrlCheckingMode;
 import eu.emi.security.authn.x509.OCSPCheckingMode;
 import eu.emi.security.authn.x509.OCSPParametes;
 import eu.emi.security.authn.x509.RevocationParameters;
 import eu.emi.security.authn.x509.StoreUpdateListener;
+import eu.emi.security.authn.x509.ValidationError;
+import eu.emi.security.authn.x509.ValidationErrorCode;
 import eu.emi.security.authn.x509.ValidationErrorListener;
 import eu.emi.security.authn.x509.ValidationResult;
+import eu.emi.security.authn.x509.ValidationStage;
 import eu.emi.security.authn.x509.X509CertChainValidator;
 import eu.emi.security.authn.x509.X509CertChainValidatorExt;
 
@@ -44,7 +49,7 @@ public class BinaryCertChainValidator implements X509CertChainValidatorExt
 	@Override
 	public ValidationResult validate(CertPath certPath)
 	{
-		return new ValidationResult(acceptAll);
+		return result(null);
 	}
 
 	/**
@@ -53,7 +58,18 @@ public class BinaryCertChainValidator implements X509CertChainValidatorExt
 	@Override
 	public ValidationResult validate(X509Certificate[] certChain)
 	{
-		return new ValidationResult(acceptAll);
+		return result(certChain);
+	}
+
+	private ValidationResult result(X509Certificate[] certChain)
+	{
+		if (acceptAll)
+			return ValidationResult.valid(certChain == null ? null : Arrays.asList(certChain));
+		CertPathValidatorException failure = new CertPathValidatorException(
+				"Certificate validation was rejected by the binary validator");
+		return ValidationResult.invalid(new ValidationError(certChain, -1,
+				ValidationErrorCode.PKIX_FAILURE, ValidationStage.PATH_VALIDATION,
+				failure.getMessage(), failure));
 	}
 
 	/**

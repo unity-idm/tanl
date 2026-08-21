@@ -38,11 +38,10 @@ public interface X509CertChainValidator
 	public X509Certificate[] getTrustedIssuers();
 	
 	/**
-	 * Registers a listener which can react to errors found during certificate 
-	 * validation. It is useful in two cases: (rarely) if you want to change 
-	 * the default logic of the validator and if you will use the validator indirectly
-	 * (e.g. to validate SSL socket connections) and want to get the original 
-	 * {@link ValidationError}, not the exception. 
+	 * Registers a listener which is notified of the primary error found during
+	 * certificate validation. A listener can observe a failure but can not
+	 * suppress it or change the validation verdict. This is especially useful
+	 * when validation is invoked indirectly, for example by a TLS connection.
 	 * 
 	 * @param listener to be registered
 	 */

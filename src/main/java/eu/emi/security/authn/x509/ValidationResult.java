@@ -1,175 +1,122 @@
 /*
- * Copyright (c) 2011-2012 ICM Uniwersytet Warszawski All rights reserved.
+ * Copyright (c) 2011-2026 ICM Uniwersytet Warszawski All rights reserved.
  * See LICENCE file for licensing information.
  */
 package eu.emi.security.authn.x509;
 
 import java.security.cert.X509Certificate;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-
 /**
- * Wraps a validation result, error messages and unresolved 
- * certificate extension oids (if any).
- * 
+ * Immutable certificate-validation result with at most one primary error.
+ *
  * @author K. Benedyczak
  * @see X509CertChainValidator
  */
-public class ValidationResult
+public final class ValidationResult
 {
-	private boolean valid;
-	private List<ValidationError> errors = new ArrayList<ValidationError>();
-	private Set<String> unresolvedCriticalExtensions;
-	private List<X509Certificate> validChain;
+	private final boolean valid;
+	private final ValidationError primaryError;
+	private final List<ValidationError> errors;
+	private final Set<String> unresolvedCriticalExtensions;
+	private final List<X509Certificate> validChain;
 
-	/**
-	 * Constructor used when no errors are provided and no information about unresolved extensions.
-	 * @param valid whether validation was valid (true) or not (false).
-	 */
-	public ValidationResult(boolean valid)
-	{
-		this(valid, new ArrayList<ValidationError>(0));
-	}
-
-	/**
- 	 * Constructor used when no information about unresolved extensions is provided.
-	 * @param valid whether validation was valid (true) or not (false).
-	 * @param errors list of errors found
-	 */
-	public ValidationResult(boolean valid, List<ValidationError> errors)
-	{
-		this(valid, errors, new HashSet<String>(0), null);
-	}
-
-	/**
- 	 * Constructor used to provide a full information set about validation problem.
-	 * @param valid whether validation was valid (true) or not (false).
-	 * @param errors list of errors found
-	 * @param unresolvedCriticalExtensions set of unresolved critical extensions
-	 * @param validChain null if input is invalid or full, valid chain including trust anchor and 
-	 * all discovered intermediary CAs.
-	 */
-	public ValidationResult(boolean valid, List<ValidationError> errors, 
+	private ValidationResult(boolean valid, ValidationError primaryError,
 			Set<String> unresolvedCriticalExtensions, List<X509Certificate> validChain)
 	{
-		this.valid = valid;
-		addErrors(errors);
-		this.unresolvedCriticalExtensions = unresolvedCriticalExtensions;
-		if (errors == null)
-			throw new IllegalArgumentException("List of validation errors can not be null");
+		if (valid && primaryError != null)
+			throw new IllegalArgumentException("A valid result can not contain an error");
+		if (!valid && primaryError == null)
+			throw new IllegalArgumentException("An invalid result must contain a primary error");
 		if (unresolvedCriticalExtensions == null)
-			throw new IllegalArgumentException("Set of unresolved critical extensions can not be null");
-		this.validChain = validChain;
+			throw new IllegalArgumentException(
+					"Set of unresolved critical extensions can not be null");
+		if (!valid && validChain != null)
+			throw new IllegalArgumentException("An invalid result can not contain a valid chain");
+
+		this.valid = valid;
+		this.primaryError = primaryError;
+		this.errors = primaryError == null ? Collections.<ValidationError>emptyList() :
+				Collections.singletonList(primaryError);
+		this.unresolvedCriticalExtensions = Collections.unmodifiableSet(
+				new HashSet<String>(unresolvedCriticalExtensions));
+		this.validChain = validChain == null ? null : Collections.unmodifiableList(
+				new ArrayList<X509Certificate>(validChain));
 	}
-	
+
 	/**
-	 * Adds specified errors to this result (may change valid flag).
-	 * @param errors to be added
+	 * Creates a successful result.
+	 *
+	 * @param validChain resolved target-to-anchor chain, or {@code null} for a
+	 * special-purpose validator which does not resolve paths
 	 */
-	public void addErrors(List<ValidationError> errors)
+	public static ValidationResult valid(List<X509Certificate> validChain)
 	{
-		if (errors == null || errors.size() > 0)
-			valid = false;
-		if (errors != null)
-			this.errors.addAll(errors);
+		return new ValidationResult(true, null, Collections.<String>emptySet(), validChain);
 	}
-	
-	public void setErrors(List<ValidationError> errors)
+
+	/** Creates an invalid result with one primary error. */
+	public static ValidationResult invalid(ValidationError primaryError)
 	{
-		this.errors.clear();
-		addErrors(errors);
+		return invalid(primaryError, Collections.<String>emptySet());
 	}
-	
-	/**
-	 * Returns whether validation was successful or not.
-	 * @return true if the validated chain turned out to be valid, false otherwise. 
-	 */
+
+	/** Creates an invalid result with one primary error and unresolved OIDs. */
+	public static ValidationResult invalid(ValidationError primaryError,
+			Set<String> unresolvedCriticalExtensions)
+	{
+		return new ValidationResult(false, primaryError,
+				unresolvedCriticalExtensions, null);
+	}
+
+	/** @return {@code true} only when validation succeeded */
 	public boolean isValid()
 	{
 		return valid;
 	}
 
 	/**
-	 * Returns list of problems found. Empty list is returned if certificate chain 
-	 * is valid.
-	 * @return list of {@link ValidationError}s
+	 * Compatibility view of the primary error. The returned list is immutable
+	 * and is either empty or contains one element.
 	 */
 	public List<ValidationError> getErrors()
 	{
-		List<ValidationError> ret = new ArrayList<ValidationError>(errors);
-		return ret;
+		return errors;
 	}
 
-	/**
-	 * Returns a set of unresolved critical certificate extensions. 
-	 * @return set of unresolved critical extensions OIDs in String form
-	 */
+	/** @return the primary error, or {@code null} for a valid result */
+	public ValidationError getPrimaryError()
+	{
+		return primaryError;
+	}
+
+	/** @return immutable unresolved critical-extension OIDs */
 	public Set<String> getUnresolvedCriticalExtensions()
 	{
 		return unresolvedCriticalExtensions;
 	}
 
-	/**
-	 * Returns the resolved, valid certificate chain which was validated.
-	 * The returned chain typically is the validation input chain with the proper trust 
-	 * anchor (i.e. the matching CA certificate from the trust store). In rare cases it can 
-	 * contain also intermediary CA certificates which were downloaded. 
-	 * @return the resolved valid chain or null if validation was not successful.
-	 * @since 1.1.0
-	 */
+	/** @return immutable resolved chain, or {@code null} if validation failed */
 	public List<X509Certificate> getValidChain()
 	{
 		return validChain;
 	}
 
-	/**
-	 * 
-	 * @return a short representation of validation result, which will contain 
-	 * only one (hopefully the most significant) validation error description.
-	 */
+	/** @return a short representation containing the primary failure */
 	public String toShortString()
 	{
-		if (valid)
-			return "OK";
-		StringBuilder sb = new StringBuilder();
-		sb.append("FAILED");
+		return valid ? "OK" : "FAILED: " + primaryError.getMessage();
+	}
 
-		if (errors.size() > 0)
-		{
-			for (ValidationError e: errors)
-				if (e.getPosition() == -1)
-				{
-					sb.append(": " + e.getMessage());
-					return sb.toString();
-				}
-			sb.append(": " + errors.get(0).getMessage());
-		}
-		return sb.toString();
-	}	
-	
-	/**
-	 * @return a full (multiline) representation of validation result, including
-	 * detailed information about all validation errors found.
-	 */
+	/** @return a full representation containing the primary failure */
 	@Override
 	public String toString()
 	{
-		if (valid)
-			return "OK";
-		StringBuilder sb = new StringBuilder();
-		sb.append("FAILED");
-		if (errors.size() > 0)
-		{
-			sb.append(" The following validation errors were found:");
-			for (ValidationError e: errors)
-			{
-				sb.append("\n");
-				sb.append(e.toString());
-			}
-		}
-		return sb.toString();
+		return valid ? "OK" : "FAILED The following validation error was found:\n" +
+				primaryError;
 	}
 }

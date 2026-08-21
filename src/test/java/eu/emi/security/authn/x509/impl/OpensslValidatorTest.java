@@ -19,6 +19,7 @@ import eu.emi.security.authn.x509.OCSPParametes;
 import eu.emi.security.authn.x509.RevocationParameters;
 import eu.emi.security.authn.x509.StoreUpdateListener;
 import eu.emi.security.authn.x509.ValidationResult;
+import eu.emi.security.authn.x509.ValidationStage;
 import eu.emi.security.authn.x509.impl.CertificateUtils.Encoding;
 
 
@@ -82,11 +83,13 @@ public class OpensslValidatorTest
 		X509Certificate[] certChain = CertificateUtils.loadCertificateChain(is, Encoding.PEM);
 		ValidationResult result = validator1.validate(certChain);
 		Assert.assertFalse("Expired certificate is valid", result.isValid());
-		Assert.assertEquals("Other than two errors returned: " + result.toString(), 2, result.getErrors().size());
-		Assert.assertTrue("Got wrong message (0): " + result.getErrors().get(0).toString(), 
-				result.getErrors().get(0).getMessage().contains("expired"));
-		Assert.assertTrue("Got wrong message (1): " + result.getErrors().get(1).toString(), 
-				result.getErrors().get(1).getMessage().contains("expired"));
+		Assert.assertEquals("Expected one primary error: " + result, 1,
+				result.getErrors().size());
+		Assert.assertEquals(0, result.getPrimaryError().getPosition());
+		Assert.assertEquals(ValidationStage.PATH_VALIDATION,
+				result.getPrimaryError().getStage());
+		Assert.assertTrue("Got wrong primary message: " + result.getPrimaryError(),
+				result.getPrimaryError().getMessage().contains("expired"));
 		
 		validator1.dispose();
 	}

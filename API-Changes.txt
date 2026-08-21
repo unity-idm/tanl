@@ -170,6 +170,46 @@ the final error/listener contract are migrated in subsequent changes; OCSP
 configuration and behavior remain available during that migration.
 
 
+PRIMARY VALIDATION ERROR CONTRACT
+
+ValidationResult is now immutable and contains either no errors for a valid
+result or one primary error for an invalid result. getErrors() remains as an
+immutable empty or single-element compatibility view. The following public
+members were removed:
+
+- ValidationResult(boolean)
+- ValidationResult(boolean, List<ValidationError>)
+- ValidationResult(boolean, List<ValidationError>, Set<String>,
+  List<X509Certificate>)
+- ValidationResult.addErrors(List<ValidationError>)
+- ValidationResult.setErrors(List<ValidationError>)
+
+Use ValidationResult.valid(List<X509Certificate>),
+ValidationResult.invalid(ValidationError), or
+ValidationResult.invalid(ValidationError, Set<String>) when constructing a
+result. ValidationResult.getPrimaryError() returns the one error directly.
+
+ValidationErrorListener.onValidationError(ValidationError) now returns void.
+Listeners receive notification of the immutable primary error but can no
+longer suppress it or change the validation verdict.
+
+ValidationStage was added with INPUT, PATH_BUILDING, PATH_VALIDATION, and
+REVOCATION values. Native errors expose their stage, original provider message,
+original cause, position, and certificate through ValidationError. Stable
+native codes and categories use the uppercase names documented in the lite
+PKI contract. Provider failures with an unspecified standard reason use
+PKIX_FAILURE; provider messages are diagnostic and are not parsed.
+
+CommonX509TrustManager, SSLTrustManager, and
+SSLTrustManagerWithHostnameChecking now preserve the primary validation
+exception as the cause of their TLS-facing CertificateException.
+
+CRL- and OCSP-enabled calls continue to use the existing revocation engine in
+this intermediate branch. Their verdicts and OCSP behavior remain available,
+while their old detailed error catalogue is temporarily retained until native
+revocation replaces that path.
+
+
 2.x HISTORICAL CHANGES
 
 1) changed semantics of the DN compare methods operating on the string representation.
