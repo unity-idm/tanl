@@ -56,7 +56,7 @@ public class OpensslCertChainValidator extends AbstractValidator
 	 * @param updateInterval specifies in miliseconds how often the directory should be 
 	 * checked for updates. The files are reloaded only if their modification timestamp
 	 * was changed since last load. Use a &lt;= 0 value to disable automatic updates.
-	 * @param params common validator settings (revocation, initial listeners, proxy support, ...) 
+	 * @param params common validator settings (revocation and initial listeners)
 	 */
 	public OpensslCertChainValidator(String directory, NamespaceCheckingMode namespaceMode, 
 			long updateInterval, ValidatorParams params)
@@ -76,7 +76,7 @@ public class OpensslCertChainValidator extends AbstractValidator
 	 * @param updateInterval specifies in miliseconds how often the directory should be 
 	 * checked for updates. The files are reloaded only if their modification timestamp
 	 * was changed since last load. Use a &lt;= 0 value to disable automatic updates.
-	 * @param params common validator settings (revocation, initial listeners, proxy support, ...) 
+	 * @param params common validator settings (revocation and initial listeners)
 	 */
 	public OpensslCertChainValidator(String directory, boolean openssl1Mode, NamespaceCheckingMode namespaceMode, 
 			long updateInterval, ValidatorParams params)
@@ -95,7 +95,7 @@ public class OpensslCertChainValidator extends AbstractValidator
 	 * @param updateInterval specifies in miliseconds how often the directory should be 
 	 * checked for updates. The files are reloaded only if their modification timestamp
 	 * was changed since last load. Use a &lt;= 0 value to disable automatic updates.
-	 * @param params common validator settings (revocation, initial listeners, proxy support, ...)
+	 * @param params common validator settings (revocation and initial listeners)
 	 * @param lazyMode if true then certificates, CRLs and namespace definitions are loaded on-demand
 	 *  (with in-memory caching). If false then the whole truststore contents is loaded at startup and kept in memory. 
 	 */
@@ -124,7 +124,7 @@ public class OpensslCertChainValidator extends AbstractValidator
 			throw new RuntimeException("BUG: OpensslCRLStoreSpi " +
 					"can not be initialized", e);
 		}
-		init(trustStore, crlStore, params.isAllowProxy(), params.getRevocationSettings());
+		init(trustStore, crlStore, params.getRevocationSettings());
 	}
 	
 	/**
@@ -147,7 +147,7 @@ public class OpensslCertChainValidator extends AbstractValidator
 
 	/**
 	 * Constructs a new validator instance using the default settings:
-	 * CRLs are used if present, proxy certificates are supported and
+	 * CRLs are used if present and
 	 * directory is rescanned every 10mins. EuGridPMA namespaces are checked in the first place,
 	 * if not found then Globus EACLs are tried. Lack of namespaces is ignored.
 	 * 
@@ -242,7 +242,6 @@ public class OpensslCertChainValidator extends AbstractValidator
 		result.addErrors(errors);
 	}
 }
-
 
 
 

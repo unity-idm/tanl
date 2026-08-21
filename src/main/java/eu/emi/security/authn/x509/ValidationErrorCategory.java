@@ -18,8 +18,6 @@ import java.util.Properties;
 public enum ValidationErrorCategory
 {
 	GENERAL_INPUT,
-	INCONSISTENT_PROXY_CHAIN,
-	INVALID_PROXY_CERT,
 	NAMESPACE,
 	X509_BASIC,
 	X509_CHAIN,

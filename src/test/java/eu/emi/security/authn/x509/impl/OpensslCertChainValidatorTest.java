@@ -81,7 +81,6 @@ import eu.emi.security.authn.x509.CrlCheckingMode;
 import eu.emi.security.authn.x509.NamespaceCheckingMode;
 import eu.emi.security.authn.x509.OCSPCheckingMode;
 import eu.emi.security.authn.x509.OCSPParametes;
-import eu.emi.security.authn.x509.ProxySupport;
 import eu.emi.security.authn.x509.RevocationParameters;
 import eu.emi.security.authn.x509.ValidationResult;
 import eu.emi.security.authn.x509.helpers.trust.OpensslTruststoreHelper;
@@ -132,7 +131,6 @@ public class OpensslCertChainValidatorTest
 		given(anOpensslCertChainValidator()
 				.with(OCSPCheckingMode.IGNORE)
 				.with(CrlCheckingMode.REQUIRE)
-				.with(ProxySupport.ALLOW)
 				.with(NamespaceCheckingMode.EUGRIDPMA_AND_GLOBUS_REQUIRE)
 				.withUpdateInterval(of(2, MINUTES))
 				.withLazyLoading());
@@ -168,7 +166,6 @@ public class OpensslCertChainValidatorTest
 		given(anOpensslCertChainValidator()
 				.with(OCSPCheckingMode.IGNORE)
 				.with(CrlCheckingMode.REQUIRE)
-				.with(ProxySupport.ALLOW)
 				.with(NamespaceCheckingMode.EUGRIDPMA_AND_GLOBUS_REQUIRE)
 				.withUpdateInterval(of(2, MINUTES))
 				.withLazyLoading());
@@ -207,7 +204,6 @@ public class OpensslCertChainValidatorTest
 		given(anOpensslCertChainValidator()
 				.with(OCSPCheckingMode.IGNORE)
 				.with(CrlCheckingMode.REQUIRE)
-				.with(ProxySupport.ALLOW)
 				.with(NamespaceCheckingMode.EUGRIDPMA_AND_GLOBUS_REQUIRE)
 				.withUpdateInterval(of(2, MINUTES))
 				.withLazyLoading());
@@ -271,7 +267,6 @@ public class OpensslCertChainValidatorTest
 	private class OpensslCertChainValidatorBuilder {
 		private OCSPCheckingMode ocspMode;
 		private CrlCheckingMode crlCheckingMode;
-		private ProxySupport proxySupport;
 		private NamespaceCheckingMode namespaceCheckingMode;
 		private Duration updateInterval;
 		private boolean isLazy;
@@ -283,11 +278,6 @@ public class OpensslCertChainValidatorTest
 
 		public OpensslCertChainValidatorBuilder with(CrlCheckingMode mode) {
 			crlCheckingMode = requireNonNull(mode);
-			return this;
-		}
-
-		public OpensslCertChainValidatorBuilder with(ProxySupport mode) {
-			proxySupport = requireNonNull(mode);
 			return this;
 		}
 
@@ -309,15 +299,13 @@ public class OpensslCertChainValidatorTest
 		public OpensslCertChainValidator build() {
 			assertThat(ocspMode, not(nullValue()));
 			assertThat(crlCheckingMode, not(nullValue()));
-			assertThat(proxySupport, not(nullValue()));
 			assertThat(namespaceCheckingMode, not(nullValue()));
 			assertThat(updateInterval, not(nullValue()));
 
 			OCSPParametes ocspParameters = new OCSPParametes(ocspMode);
 			RevocationParameters revocationParams =
 					new RevocationParameters(crlCheckingMode, ocspParameters);
-			ValidatorParams validatorParams = new ValidatorParams(revocationParams,
-					proxySupport);
+			ValidatorParams validatorParams = new ValidatorParams(revocationParams);
 
 			return new OpensslCertChainValidator(trustStore.toString(), true,
 					namespaceCheckingMode, updateInterval.toMillis(),

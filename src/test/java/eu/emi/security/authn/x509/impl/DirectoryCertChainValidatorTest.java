@@ -18,7 +18,6 @@ import java.util.Collections;
 import org.apache.commons.io.FileUtils;
 import org.junit.Test;
 
-import eu.emi.security.authn.x509.ProxySupport;
 import eu.emi.security.authn.x509.StoreUpdateListener;
 import eu.emi.security.authn.x509.ValidationResult;
 import eu.emi.security.authn.x509.impl.CertificateUtils.Encoding;
@@ -33,8 +32,7 @@ public class DirectoryCertChainValidatorTest
 		DirectoryCertChainValidator validator1 = new DirectoryCertChainValidator(
 				Collections.singletonList("src/test/resources/truststores/*.pem"), Encoding.PEM,
 				-1, 5000, null, new ValidatorParamsExt(
-					RevocationParametersExt.IGNORE,
-					ProxySupport.DENY));
+					RevocationParametersExt.IGNORE));
 		
 		X509Certificate[] toValidate = CertificateUtils.loadCertificateChain(
 				new FileInputStream("src/test/resources/validator-certs/trusted_client.cert"), 
@@ -53,8 +51,7 @@ public class DirectoryCertChainValidatorTest
 		DirectoryCertChainValidator validator = new DirectoryCertChainValidator(
 				Collections.singletonList("src/test/resources/truststores/multipem.pem"), Encoding.PEM,
 				-1, 5000, null, new ValidatorParamsExt(
-					RevocationParametersExt.IGNORE,
-					ProxySupport.DENY));
+					RevocationParametersExt.IGNORE));
 		
 		X509Certificate[] trustedIssuers = validator.getTrustedIssuers();
 		
@@ -68,7 +65,7 @@ public class DirectoryCertChainValidatorTest
 		DirectoryCertChainValidator validator1 = new DirectoryCertChainValidator(
 				Collections.singletonList(dir.getPath() + "/*.pem"), Encoding.PEM, 
 				-1, 500000, null, new ValidatorParamsExt(
-					RevocationParametersExt.IGNORE,	ProxySupport.DENY));
+					RevocationParametersExt.IGNORE));
 		
 		X509Certificate[] toValidate = CertificateUtils.loadCertificateChain(
 				new FileInputStream("src/test/resources/validator-certs/trusted_client.cert"), 
@@ -120,7 +117,7 @@ public class DirectoryCertChainValidatorTest
 		DirectoryCertChainValidator validator1 = new DirectoryCertChainValidator(
 				Collections.singletonList(dir.getPath() + "/*.pem"), Encoding.PEM, 
 				-1, 500000, null, new ValidatorParamsExt(
-					RevocationParametersExt.IGNORE,	ProxySupport.DENY));
+					RevocationParametersExt.IGNORE));
 		
 		X509Certificate[] toValidate = CertificateUtils.loadCertificateChain(
 				new FileInputStream("src/test/resources/validator-certs/trusted_client.cert"), 

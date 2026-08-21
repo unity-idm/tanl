@@ -16,7 +16,6 @@ import eu.emi.security.authn.x509.CrlCheckingMode;
 import eu.emi.security.authn.x509.OCSPCheckingMode;
 import eu.emi.security.authn.x509.OCSPParametes;
 import eu.emi.security.authn.x509.OCSPResponder;
-import eu.emi.security.authn.x509.ProxySupport;
 import eu.emi.security.authn.x509.RiskyIntegrationTests;
 import eu.emi.security.authn.x509.impl.CertificateUtils;
 import eu.emi.security.authn.x509.impl.NISTValidatorTestBase;
@@ -53,13 +52,13 @@ public class OCSPIntegrationTest extends NISTValidatorTestBase
 		
 		doPathTest(0, "src/test/resources/ocsp/", new String[] {"SymantecClass3EVSSLCA-G3"}, 
 				".pem", "", new String[] {}, "",
-				new X509Certificate[] {toCheck}, null, ProxySupport.DENY, 
+				new X509Certificate[] {toCheck}, null,
 				CrlCheckingMode.IGNORE, ocspParams);
 		
 		ocspParams = new OCSPParametes(OCSPCheckingMode.REQUIRE);
 		doPathTest(0, "src/test/resources/ocsp/", new String[] {"SymantecClass3EVSSLCA-G3"}, 
 				".pem", "", new String[] {}, "",
-				new X509Certificate[] {toCheck}, null, ProxySupport.DENY, 
+				new X509Certificate[] {toCheck}, null,
 				CrlCheckingMode.IGNORE, ocspParams);
 
 		ocspParams = new OCSPParametes(OCSPCheckingMode.REQUIRE);		

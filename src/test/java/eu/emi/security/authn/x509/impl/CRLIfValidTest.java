@@ -20,7 +20,6 @@ import org.junit.Test;
 import eu.emi.security.authn.x509.CrlCheckingMode;
 import eu.emi.security.authn.x509.OCSPCheckingMode;
 import eu.emi.security.authn.x509.OCSPParametes;
-import eu.emi.security.authn.x509.ProxySupport;
 import eu.emi.security.authn.x509.ValidationResult;
 import eu.emi.security.authn.x509.impl.CertificateUtils.Encoding;
 
@@ -37,8 +36,7 @@ public class CRLIfValidTest extends NISTValidatorTestBase
 				stores, Encoding.PEM, -1, 0, null,
 				new ValidatorParamsExt(new RevocationParametersExt(CrlCheckingMode.IF_VALID, 
 						new CRLParameters(crlstores, -1, 0, null), 
-						new OCSPParametes(OCSPCheckingMode.IGNORE)), 
-						ProxySupport.DENY));
+						new OCSPParametes(OCSPCheckingMode.IGNORE))));
 		X509Certificate[] cc = CertificateUtils.loadCertificateChain(new FileInputStream(
 				new File("src/test/resources/ca-expired-crl/CA_files/newcerts/8FBFA7974FD13783.pem")), 
 				Encoding.PEM);
@@ -56,7 +54,7 @@ public class CRLIfValidTest extends NISTValidatorTestBase
 		doPathTest(expectedErrors,
 				"src/test/resources/NIST/certs/", new String[]{trustedName}, ".crt",
 				"src/test/resources/NIST/crls/", crlNames, ".crl",
-				toCheck, policies, ProxySupport.ALLOW, CrlCheckingMode.IF_VALID);
+				toCheck, policies, CrlCheckingMode.IF_VALID);
 	}
 
 	/*

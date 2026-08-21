@@ -45,8 +45,7 @@ public class Examples
  * the /etc/grid-security/certificates directory. Both kinds of 
  * namespaces are checked and forced if are present. Truststore is 
  * reread every minute. The additional settings are not defined and
- * so defaults are used: CRLs are forced if are present. Proxy 
- * certificates are supported. No listeners are registered to 
+ * so defaults are used: CRLs are forced if are present. No listeners are registered to
  * be notified about trusted CA certificates, CRLs or namespace 
  * definitions reloading.
  */
@@ -105,7 +104,7 @@ OCSPParametes ocspParams = new OCSPParametes(OCSPCheckingMode.IF_AVAILABLE);
 ValidatorParamsExt commonParams = new ValidatorParamsExt(
 	new RevocationParametersExt(CrlCheckingMode.REQUIRE, 
 		crlParams, ocspParams),
-	ProxySupport.ALLOW, Collections.singletonList(listener));
+	Collections.singletonList(listener));
 
 KeystoreCertChainValidator v = new KeystoreCertChainValidator(
 	"/my/truststore.jks", keystorePassword, "JKS", 1000, 

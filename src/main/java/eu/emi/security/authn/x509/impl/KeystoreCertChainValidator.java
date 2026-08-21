@@ -43,7 +43,7 @@ public class KeystoreCertChainValidator extends PlainCRLValidator
 	 * @param truststoreUpdateInterval how often (in ms) the truststore file should be 
 	 * checked for updates. The file is reloaded only if its modification timestamp
 	 * has changed.
-	 * @param params common validator settings (revocation, initial listeners, proxy support, ...)
+	 * @param params common validator settings (revocation and initial listeners)
 	 * @throws IOException if the truststore can not be read
 	 * @throws KeyStoreException if the truststore can not be parsed or 
 	 * if password is incorrect. 
@@ -56,7 +56,7 @@ public class KeystoreCertChainValidator extends PlainCRLValidator
 		super(params.getRevocationSettings(), params.getInitialListeners());
 		store = new JDKFSTrustAnchorStore(truststorePath, password, type, 
 				timer, truststoreUpdateInterval, observers);
-		init(store, crlStoreImpl, params.isAllowProxy(), params.getRevocationSettings());
+		init(store, crlStoreImpl, params.getRevocationSettings());
 	}
 
 	/**

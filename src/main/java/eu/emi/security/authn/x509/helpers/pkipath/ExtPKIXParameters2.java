@@ -21,7 +21,7 @@ import eu.emi.security.authn.x509.helpers.ObserversHandler;
 
 /**
  * Extended PKIX parameters with additional settings related to 
- * the library features: different CRL modes and proxy support.
+ * the library features, including different revocation modes.
  * @author K. Benedyczak
  */
 public class ExtPKIXParameters2 implements CertPathParameters
@@ -29,7 +29,6 @@ public class ExtPKIXParameters2 implements CertPathParameters
 	public static class Builder
 	{
 		private PKIXExtendedParameters.Builder baseBuilder;
-		private boolean proxySupport;
 		private RevocationParameters revocationParams;
 		private ObserversHandler observers;
 		private PKIXParameters baseOfBase;
@@ -44,13 +43,6 @@ public class ExtPKIXParameters2 implements CertPathParameters
 			this.baseBuilder = baseBuilder;
 			setTrustAnchors(trustAnchors);
 		}
-		
-		public Builder setProxySupport(boolean proxySupport)
-		{
-			this.proxySupport = proxySupport;
-			return this;
-		}
-		
 		
 		public Builder setRevocationParams(RevocationParameters revocationParams)
 		{
@@ -91,7 +83,6 @@ public class ExtPKIXParameters2 implements CertPathParameters
 	protected final PKIXExtendedParameters base;
 	protected final PKIXExtendedBuilderParameters baseExt;
 	protected final PKIXParameters baseOfBase;
-	protected final boolean proxySupport;
 	protected final RevocationParameters revocationParams;
 	protected final ObserversHandler observers;
 
@@ -102,7 +93,6 @@ public class ExtPKIXParameters2 implements CertPathParameters
 		this.baseOfBase = builder.baseOfBase;
 		this.revocationParams = builder.revocationParams;
 		this.observers = builder.observers;
-		this.proxySupport = builder.proxySupport;
 	}
 
 	public PKIXExtendedParameters getBaseParameters()
@@ -114,12 +104,6 @@ public class ExtPKIXParameters2 implements CertPathParameters
 	{
 		return baseExt;
 	}
-
-	public boolean isProxySupport()
-	{
-		return proxySupport;
-	}
-
 
 	public RevocationParameters getRevocationParams()
 	{

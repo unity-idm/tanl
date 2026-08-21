@@ -14,7 +14,6 @@ import java.util.Date;
 import java.util.Hashtable;
 import java.util.Set;
 
-import org.bouncycastle.asn1.ASN1InputStream;
 import org.bouncycastle.asn1.ASN1ObjectIdentifier;
 import org.bouncycastle.asn1.DERBitString;
 import org.bouncycastle.asn1.DERPrintableString;
@@ -23,11 +22,13 @@ import org.bouncycastle.asn1.x500.AttributeTypeAndValue;
 import org.bouncycastle.asn1.x500.RDN;
 import org.bouncycastle.asn1.x500.X500Name;
 import org.bouncycastle.asn1.x500.style.BCStyle;
-import org.bouncycastle.asn1.x509.AlgorithmIdentifier;
 import org.bouncycastle.asn1.x509.SubjectPublicKeyInfo;
+import org.bouncycastle.cert.X509v3CertificateBuilder;
+import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter;
+import org.bouncycastle.operator.ContentSigner;
+import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
 
 import eu.emi.security.authn.x509.helpers.JavaAndBCStyle;
-import eu.emi.security.authn.x509.helpers.proxy.X509v3CertificateBuilder;
 import eu.emi.security.authn.x509.impl.CertificateUtils.Encoding;
 
 /**
@@ -268,22 +269,15 @@ public class OpensslStrangeDNProducer {
 		keyPairGen.initialize(1024, new SecureRandom());
 		KeyPair kp = keyPairGen.generateKeyPair();
 
-		SubjectPublicKeyInfo publicKeyInfo;
-		ASN1InputStream is = new ASN1InputStream(kp.getPublic().getEncoded());
-		publicKeyInfo = SubjectPublicKeyInfo.getInstance(is.readObject());
-		is.close();
+		SubjectPublicKeyInfo publicKeyInfo = SubjectPublicKeyInfo.getInstance(kp.getPublic().getEncoded());
 
 		X509v3CertificateBuilder certBuilder = new X509v3CertificateBuilder(issuer, serial,
 				notBefore, notAfter, subject, publicKeyInfo);
 
 		String algName = "SHA1WithRSAEncryption";
-		AlgorithmIdentifier algId = AlgorithmIdentifier.getInstance("1.2.840.113549.1.1.5");
-
-		X509Certificate cert = certBuilder.build(kp.getPrivate(),
-				algId,
-				algName,
-				null,
-				null);
+		ContentSigner signer = new JcaContentSignerBuilder(algName).setProvider("BC").build(kp.getPrivate());
+		X509Certificate cert = new JcaX509CertificateConverter().setProvider("BC")
+				.getCertificate(certBuilder.build(signer));
 		System.out.println(cert.getSubjectX500Principal().getName());
 		FileOutputStream fos = new FileOutputStream("target/cert-1.pem");
 		CertificateUtils.saveCertificate(fos, cert, Encoding.PEM);
