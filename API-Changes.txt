@@ -438,6 +438,43 @@ OCSPCheckingMode.IF_AVAILABLE, CRL/OCSP combinations, responder-failure
 caching, and update notifications remain separate layers.
 
 
+NATIVE OCSP RESPONDER FAILURE CACHE
+
+Responder-wide transport failures from the native OCSP fetch path are now
+cached by responder URI. This includes connection, request-write, timeout,
+response-read, and explicit HTTP 502/503/504 failures. Other HTTP errors remain
+retryable for ordered fallback but are not cached because they can be specific
+to one certificate request. A live failure entry skips that responder without
+opening a connection and remains a retryable outcome, so ordered validation
+can proceed to the next configured or AIA responder. A successfully cached
+OCSP response is still tried before the responder-failure cache, and any newly
+received non-cacheable HTTP response clears the responder's failure entry.
+
+Failure caching uses the existing OCSPParametes cache controls. A negative TTL
+disables both response and failure caching. Positive values expire failure
+entries in the documented unit of seconds. Since a failure has no response
+validity metadata, zero uses OCSPParametes.DEFAULT_CACHE as a bounded one-hour
+failure lifetime instead of suppressing a responder forever.
+
+Each validator's in-memory failure cache is access-ordered and limited to 100
+responder URIs. When a disk-cache directory is configured, failure metadata is
+stored separately as ocspfail-v1-<sha256>.cache. The digest covers the
+responder URI, and the versioned fixed-size record contains only the failure
+timestamp. Java exceptions and provider messages are never serialized or used
+as cache keys. Corrupt, truncated, future-dated, and expired records are
+deleted as cache misses; persistence errors do not alter validation.
+
+Only the IOException transport boundary classified by the transport-fallback
+layer creates an entry. Oversized or malformed response bytes, nonce failures,
+and all native BC response-validation failures remain terminal and are never
+negative-cached. Nonce-enabled requests bypass response caching but retain
+responder-failure caching because availability is independent of response
+replay.
+
+OCSPCheckingMode.IF_AVAILABLE, CRL/OCSP combinations, and update notifications
+remain separate layers.
+
+
 2.x HISTORICAL CHANGES
 
 1) changed semantics of the DN compare methods operating on the string representation.

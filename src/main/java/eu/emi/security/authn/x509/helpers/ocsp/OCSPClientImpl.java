@@ -94,6 +94,28 @@ public class OCSPClientImpl
 			super(message, cause);
 		}
 	}
+
+	/**
+	 * Indicates that the responder returned a non-successful HTTP status. The
+	 * status can be retryable for responder ordering without proving that the
+	 * responder is unavailable for every OCSP request.
+	 */
+	public static class OCSPHTTPException extends IOException
+	{
+		private static final long serialVersionUID = 1L;
+		private final int statusCode;
+
+		private OCSPHTTPException(int statusCode)
+		{
+			super("OCSP responder returned HTTP status " + statusCode);
+			this.statusCode = statusCode;
+		}
+
+		public int getStatusCode()
+		{
+			return statusCode;
+		}
+	}
 	
 	/**
 	 * Returns a verified single response, related to the checked certificate. This is single-shot version, 
@@ -186,6 +208,12 @@ public class OCSPClientImpl
 				configureHttpConnection(con, timeout);
 			}
 			
+			int statusCode = con.getResponseCode();
+			if (statusCode < 200 || statusCode >= 300)
+			{
+				con.disconnect();
+				throw new OCSPHTTPException(statusCode);
+			}
 			in = con.getInputStream();
 			int contentLength = con.getContentLength();
 			if (contentLength == -1 || contentLength > MAX_RESPONSE_SIZE)
@@ -533,7 +561,6 @@ public class OCSPClientImpl
 		return octs.getOctets();			
 	}
 }
-
 
 
 
