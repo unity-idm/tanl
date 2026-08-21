@@ -14,6 +14,7 @@ import static org.junit.Assert.assertTrue;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.IOException;
 import java.math.BigInteger;
 import java.net.InetSocketAddress;
 import java.net.URI;
@@ -78,10 +79,13 @@ import org.junit.rules.TemporaryFolder;
 import com.sun.net.httpserver.HttpServer;
 
 import eu.emi.security.authn.x509.OCSPResponder;
+import eu.emi.security.authn.x509.StoreUpdateListener;
+import eu.emi.security.authn.x509.StoreUpdateListener.Severity;
 import eu.emi.security.authn.x509.ValidationError;
 import eu.emi.security.authn.x509.ValidationErrorCode;
 import eu.emi.security.authn.x509.ValidationResult;
 import eu.emi.security.authn.x509.ValidationStage;
+import eu.emi.security.authn.x509.helpers.ObserversHandler;
 import eu.emi.security.authn.x509.helpers.ocsp.OCSPClientImpl.OCSPHTTPException;
 import eu.emi.security.authn.x509.helpers.ocsp.OCSPClientImpl.OCSPResponseDecodingException;
 import eu.emi.security.authn.x509.impl.CertificateUtils;
@@ -591,6 +595,77 @@ public class NativeBCPKIXOCSPTest
 				OCSPHTTPException);
 		assertTrue(independentRequest.toString(), independentRequest.isValid());
 		assertThat(queries.get(), is(2));
+	}
+
+	@Test
+	public void shouldNotifyTransportFailureHiddenByFallback() throws Exception
+	{
+		final List<String> locations = new ArrayList<String>();
+		final List<String> types = new ArrayList<String>();
+		final List<Severity> severities = new ArrayList<Severity>();
+		final List<Exception> causes = new ArrayList<Exception>();
+		StoreUpdateListener listener = new StoreUpdateListener()
+		{
+			@Override
+			public void loadingNotification(String location, String type,
+					Severity level, Exception cause)
+			{
+				locations.add(location);
+				types.add(type);
+				severities.add(level);
+				causes.add(cause);
+			}
+		};
+		validator = new NativeBCPKIXValidator(new ObserversHandler(
+				Collections.singleton(listener)));
+		responderServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+		AtomicInteger unavailableQueries = new AtomicInteger();
+		addUnavailableResponse("/notified-unavailable", unavailableQueries);
+		addResponse("/notified-good", response(null, rootKeyPair.getPrivate(),
+				new Date(System.currentTimeMillis() + 10 * MINUTE)),
+				new AtomicInteger());
+		responderServer.start();
+		URI unavailable = responderURI("/notified-unavailable");
+		OCSPResponder[] responders = {
+				new OCSPResponder(unavailable.toURL(), root),
+				new OCSPResponder(responderURI("/notified-good").toURL(), root)};
+
+		ValidationResult result = validator.validateWithOCSP(
+				new X509Certificate[] {target, root}, anchors, responders, true,
+				1000, -1, null, false);
+
+		assertTrue(result.toString(), result.isValid());
+		assertThat(locations, contains(unavailable.toString()));
+		assertThat(types, contains(StoreUpdateListener.OCSP));
+		assertThat(severities, contains(Severity.WARNING));
+		assertThat(causes.size(), is(1));
+		assertTrue(causes.get(0) instanceof IOException);
+	}
+
+	@Test
+	public void shouldNotNotifyDefinitiveNativeStatusFailure() throws Exception
+	{
+		final AtomicInteger notifications = new AtomicInteger();
+		StoreUpdateListener listener = new StoreUpdateListener()
+		{
+			@Override
+			public void loadingNotification(String location, String type,
+					Severity level, Exception cause)
+			{
+				notifications.incrementAndGet();
+			}
+		};
+		validator = new NativeBCPKIXValidator(new ObserversHandler(
+				Collections.singleton(listener)));
+		CertificateStatus revoked = new RevokedStatus(
+				new Date(System.currentTimeMillis() - MINUTE), 1);
+
+		ValidationResult result = validate(response(revoked,
+				rootKeyPair.getPrivate(),
+				new Date(System.currentTimeMillis() + 10 * MINUTE)));
+
+		assertNativeOCSPFailure(result);
+		assertThat(notifications.get(), is(0));
 	}
 
 	@Test

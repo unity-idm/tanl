@@ -475,6 +475,34 @@ OCSPCheckingMode.IF_AVAILABLE, CRL/OCSP combinations, and update notifications
 remain separate layers.
 
 
+NATIVE OCSP UPDATE NOTIFICATIONS
+
+Native OCSP request and response-processing failures are now reported through
+the validator's existing StoreUpdateListener collection. Each notification
+uses the responder URI as its location, StoreUpdateListener.OCSP as its type,
+Severity.WARNING, and the original structured exception as its cause. The
+native validator retains the shared ObserversHandler, so both initial listeners
+and listeners registered after validator construction observe these events.
+
+Notifications are emitted for request-construction failures, HTTP transport
+failures, cached responder failures, bounded response-decoding failures, nonce
+failures, and encoded-response processing failures. They are emitted at each
+responder attempt, including a failed attempt hidden by successful fallback.
+Response cache hits and successful fetches do not emit update notifications,
+matching the compatibility path.
+
+Native BC response-validation failures are deliberately excluded. BC 1.85
+does not structurally distinguish a revoked or unknown certificate status from
+an invalid signature, unauthorized signer, stale response, or similar
+provider failure. Treating every such result as a responder loading warning
+would incorrectly report definitive certificate status as an infrastructure
+problem, while parsing provider messages would be unstable. All such results
+remain terminal validation failures exactly as before.
+
+OCSPCheckingMode.IF_AVAILABLE and CRL/OCSP combinations remain separate
+layers.
+
+
 2.x HISTORICAL CHANGES
 
 1) changed semantics of the DN compare methods operating on the string representation.
