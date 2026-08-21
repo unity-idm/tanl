@@ -578,7 +578,7 @@ public class OpensslCertChainValidatorTest
 	}
 
 	@Test
-	public void shouldKeepMultipleDiscoveredRespondersOnCompatibilityPath()
+	public void shouldUseFirstDiscoveredResponderOnNativePath()
 			throws Exception {
 		CA rootCA = given(aCertificateAuthority()
 				.selfSigned()
@@ -601,7 +601,9 @@ public class OpensslCertChainValidatorTest
 
 		assertThat(result.isValid(), is(false));
 		assertThat(result.getPrimaryError().getErrorCode(),
-				is(ValidationErrorCode.ocspResponderQueryError));
+				is(ValidationErrorCode.PKIX_FAILURE));
+		assertThat(result.getPrimaryError().getStage(),
+				is(ValidationStage.REVOCATION));
 	}
 
 	private OCSPResponder startMalformedOCSPResponder(X509Certificate certificate)

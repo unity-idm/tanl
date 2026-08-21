@@ -385,6 +385,33 @@ disk path. A cached response is bound to its original request nonce and can
 not establish freshness for a later validation. Nonce-free caching behavior
 is unchanged. Multiple responders and ordering, OCSPCheckingMode.IF_AVAILABLE,
 CRL/OCSP combinations, and OCSP update notifications remain separate layers.
+Deterministic responder selection is added by the following migration layer.
+
+
+NATIVE OCSP RESPONDER ORDERING
+
+Strict native OCSP validation now accepts multiple configured responders,
+multiple certificate AIA responders, and configurations containing both. The
+configured responder array and AIA access descriptions each retain their
+original order. OCSPParametes.isPreferLocalResponders() selects which group is
+placed first; an empty preferred group naturally selects the other group.
+The first resulting responder is used independently for each certificate in
+the validated path.
+
+Configured responders retain their explicitly trusted responder certificate.
+Discovered responders use the already validated issuer context. Timeout,
+nonce, and cache behavior from the preceding native layers apply to the
+selected responder. A non-empty preferred configured group can be selected
+without parsing unused AIA metadata; AIA remains strict whenever the
+discovered group is needed.
+
+This layer deliberately selects but does not retry. A native OCSP rejection is
+returned immediately and is not converted into success by a later responder.
+BC 1.85 does not structurally distinguish revoked, unknown, stale, forged, or
+otherwise invalid responses in the observed CertPathValidatorException
+reasons, and provider messages are not parsed to guess retryability. Safe
+transport-failure fallback remains a separate layer, as do
+OCSPCheckingMode.IF_AVAILABLE, CRL/OCSP combinations, and update notifications.
 
 
 2.x HISTORICAL CHANGES
