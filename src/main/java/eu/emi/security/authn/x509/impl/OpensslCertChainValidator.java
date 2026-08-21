@@ -8,21 +8,17 @@ package eu.emi.security.authn.x509.impl;
 import java.security.InvalidAlgorithmParameterException;
 import java.security.cert.TrustAnchor;
 import java.security.cert.X509Certificate;
-import java.util.List;
 import java.util.Set;
 import java.util.Timer;
 
-import eu.emi.security.authn.x509.NamespaceCheckingMode;
-import eu.emi.security.authn.x509.ValidationError;
 import eu.emi.security.authn.x509.ValidationResult;
 import eu.emi.security.authn.x509.helpers.crl.AbstractCRLStoreSPI;
 import eu.emi.security.authn.x509.helpers.crl.LazyOpensslCRLStoreSpi;
 import eu.emi.security.authn.x509.helpers.crl.OpensslCRLStoreSpi;
-import eu.emi.security.authn.x509.helpers.ns.NamespaceChecker;
 import eu.emi.security.authn.x509.helpers.pkipath.AbstractValidator;
 import eu.emi.security.authn.x509.helpers.trust.LazyOpensslTrustAnchorStoreImpl;
-import eu.emi.security.authn.x509.helpers.trust.OpensslTrustAnchorStore;
 import eu.emi.security.authn.x509.helpers.trust.OpensslTrustAnchorStoreImpl;
+import eu.emi.security.authn.x509.helpers.trust.TrustAnchorStore;
 
 
 /**
@@ -39,86 +35,54 @@ import eu.emi.security.authn.x509.helpers.trust.OpensslTrustAnchorStoreImpl;
  */
 public class OpensslCertChainValidator extends AbstractValidator
 {
-	private static final X509Certificate[] EMPTY_CERT_ARRAY = new X509Certificate[0];
-	private OpensslTrustAnchorStore trustStore;
+	private TrustAnchorStore trustStore;
 	private AbstractCRLStoreSPI crlStore;
-	private final NamespaceCheckingMode namespaceMode;
 	private String path;
 	private final boolean lazyMode;
 	protected static final Timer timer=new Timer("caNl validator (openssl) timer", true);
 
 	/**
-	 * Constructs a new validator instance. This version is equivalent to the {@link #OpensslCertChainValidator(String, boolean, NamespaceCheckingMode, long, ValidatorParams, boolean)}
-	 * with the legacy (pre 1.0) format of the truststore and the lazy mode turned on.
+	 * Constructs a new validator instance using modern OpenSSL subject hashes and lazy loading.
 	 *  
 	 * @param directory path where trusted certificates are stored.
-	 * @param namespaceMode specifies how certificate namespaces should be handled
 	 * @param updateInterval specifies in miliseconds how often the directory should be 
 	 * checked for updates. The files are reloaded only if their modification timestamp
 	 * was changed since last load. Use a &lt;= 0 value to disable automatic updates.
 	 * @param params common validator settings (revocation and initial listeners)
 	 */
-	public OpensslCertChainValidator(String directory, NamespaceCheckingMode namespaceMode, 
-			long updateInterval, ValidatorParams params)
+	public OpensslCertChainValidator(String directory, long updateInterval, ValidatorParams params)
 	{
-		this(directory, false, namespaceMode, updateInterval, params, true);
+		this(directory, updateInterval, params, true);
 	}
 	
 	/**
-	 * Constructs a new validator instance. This validator will work in the lazy mode. See 
-	 * {@link #OpensslCertChainValidator(String, boolean, NamespaceCheckingMode, long, ValidatorParams, boolean)}
-	 * for details. 
-	 *  
-	 * @param directory path where trusted certificates are stored.
-	 * @param openssl1Mode if true then truststore is with hashes in openssl 1+ format. Otherwise
-	 * the openssl 0.x format is used. 
-	 * @param namespaceMode specifies how certificate namespaces should be handled
-	 * @param updateInterval specifies in miliseconds how often the directory should be 
-	 * checked for updates. The files are reloaded only if their modification timestamp
-	 * was changed since last load. Use a &lt;= 0 value to disable automatic updates.
-	 * @param params common validator settings (revocation and initial listeners)
-	 */
-	public OpensslCertChainValidator(String directory, boolean openssl1Mode, NamespaceCheckingMode namespaceMode, 
-			long updateInterval, ValidatorParams params)
-	{
-		this(directory, openssl1Mode, namespaceMode, updateInterval, params, true);
-	}	
-	
-	/**
-	 * Constructs a new validator instance.
+	 * Constructs a new validator instance using modern OpenSSL subject hashes.
 	 *  
 	 * @since 2.0.0
 	 * @param directory path where trusted certificates are stored.
-	 * @param openssl1Mode if true then truststore is with hashes in openssl 1+ format. Otherwise
-	 * the openssl 0.x format is used. 
-	 * @param namespaceMode specifies how certificate namespaces should be handled
 	 * @param updateInterval specifies in miliseconds how often the directory should be 
 	 * checked for updates. The files are reloaded only if their modification timestamp
 	 * was changed since last load. Use a &lt;= 0 value to disable automatic updates.
 	 * @param params common validator settings (revocation and initial listeners)
-	 * @param lazyMode if true then certificates, CRLs and namespace definitions are loaded on-demand
+	 * @param lazyMode if true then certificates and CRLs are loaded on-demand
 	 *  (with in-memory caching). If false then the whole truststore contents is loaded at startup and kept in memory. 
 	 */
-	public OpensslCertChainValidator(String directory, boolean openssl1Mode, NamespaceCheckingMode namespaceMode, 
-			long updateInterval, ValidatorParams params, boolean lazyMode)
+	public OpensslCertChainValidator(String directory, long updateInterval,
+			ValidatorParams params, boolean lazyMode)
 	{
 		super(params.getInitialListeners());
 		path = directory;
 		this.lazyMode = lazyMode;
-		this.namespaceMode = namespaceMode;
 		trustStore = lazyMode ?  
-				new LazyOpensslTrustAnchorStoreImpl(directory, updateInterval, 
-						observers, openssl1Mode)
+				new LazyOpensslTrustAnchorStoreImpl(directory, updateInterval, observers)
 				:
-				new OpensslTrustAnchorStoreImpl(directory, timer, updateInterval, 
-						namespaceMode.globusEnabled(), namespaceMode.euGridPmaEnabled(), 
-						observers, openssl1Mode);
+				new OpensslTrustAnchorStoreImpl(directory, timer, updateInterval, observers);
 		try
 		{
 			crlStore = lazyMode ? 
-				new LazyOpensslCRLStoreSpi(directory, updateInterval, observers, openssl1Mode)
+				new LazyOpensslCRLStoreSpi(directory, updateInterval, observers)
 				:
-				new OpensslCRLStoreSpi(directory, updateInterval, timer, observers, openssl1Mode);
+				new OpensslCRLStoreSpi(directory, updateInterval, timer, observers);
 		} catch (InvalidAlgorithmParameterException e)
 		{
 			throw new RuntimeException("BUG: OpensslCRLStoreSpi " +
@@ -131,34 +95,26 @@ public class OpensslCertChainValidator extends AbstractValidator
 	 * Constructs a new validator instance with default additional settings
 	 * (see {@link ValidatorParams#ValidatorParams()}).
 	 * 
-	 * The legacy, pre openssl 1.0 format of the truststore is used as well as the lazy loading mode.
-	 *  
 	 * @param directory path where trusted certificates are stored.
-	 * @param namespaceMode specifies how certificate namespaces should be handled
 	 * @param updateInterval specifies in miliseconds how often the directory should be 
 	 * checked for updates. The files are reloaded only if their modification timestamp
 	 * was changed since last load.
 	 */
-	public OpensslCertChainValidator(String directory, NamespaceCheckingMode namespaceMode, 
-			long updateInterval)
+	public OpensslCertChainValidator(String directory, long updateInterval)
 	{
-		this(directory, namespaceMode, updateInterval, new ValidatorParams());
+		this(directory, updateInterval, new ValidatorParams());
 	}
 
 	/**
 	 * Constructs a new validator instance using the default settings:
-	 * CRLs are used if present and
-	 * directory is rescanned every 10mins. EuGridPMA namespaces are checked in the first place,
-	 * if not found then Globus EACLs are tried. Lack of namespaces is ignored.
-	 * 
-	 * The legacy, pre openssl 1.0 format of the truststore is used as well as the lazy loading mode.
+	 * CRLs are used if present, the directory is rescanned every 10 minutes,
+	 * modern OpenSSL subject hashes are required, and lazy loading is enabled.
 	 *  
 	 * @param directory path where trusted certificates are stored.
 	 */
 	public OpensslCertChainValidator(String directory)
 	{
-		this(directory, NamespaceCheckingMode.EUGRIDPMA_GLOBUS, 600000, 
-			new ValidatorParamsExt());
+		this(directory, 600000, new ValidatorParamsExt());
 	}
 	
 	/**
@@ -168,15 +124,6 @@ public class OpensslCertChainValidator extends AbstractValidator
 	public String getTruststorePath()
 	{
 		return path;
-	}
-	
-	/**
-	 * Returns the namespace checking mode.
-	 * @return the namespace mode
-	 */
-	public NamespaceCheckingMode getNamespaceCheckingMode()
-	{
-		return namespaceMode;
 	}
 	
 	/**
@@ -225,24 +172,9 @@ public class OpensslCertChainValidator extends AbstractValidator
 		{
 			anchors = trustStore.getTrustAnchors(); 
 		}
-		ValidationResult result = super.validate(certChain, anchors); 
-		
-		validateNamespaces(certChain, result);
-		return result;
-	}
-
-	private void validateNamespaces(X509Certificate[] certChain, ValidationResult result)
-	{
-		NamespaceChecker checker = new NamespaceChecker(namespaceMode, trustStore.getPmaNsStore(), 
-				trustStore.getGlobusNsStore());
-		
-		X509Certificate[] certChainToValidate = result.isValid() ? result.getValidChain().toArray(EMPTY_CERT_ARRAY) : certChain;
-		List<ValidationError> errors = checker.check(certChainToValidate);
-		processErrorList(errors);
-		result.addErrors(errors);
+		return super.validate(certChain, anchors);
 	}
 }
-
 
 
 

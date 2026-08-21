@@ -1,4 +1,0 @@
-TO Issuer "/DC=HK/DC=HKU/DC=GRID/CN=HKU Grid CA" PERMIT Subject "/C=.*"
-
-
-TO Issuer "/C=EU/CN=Test" PERMIT Subject "/C=PL/O=.*"

@@ -14,7 +14,6 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import eu.emi.security.authn.x509.CrlCheckingMode;
-import eu.emi.security.authn.x509.NamespaceCheckingMode;
 import eu.emi.security.authn.x509.OCSPCheckingMode;
 import eu.emi.security.authn.x509.OCSPParametes;
 import eu.emi.security.authn.x509.RevocationParameters;
@@ -44,9 +43,7 @@ public class OpensslValidatorTest
 		}));
 		OpensslCertChainValidator validator1 = new OpensslCertChainValidator(
 				"src/test/resources/glite-utiljava/grid-security/certificates-newhash",
-				true,
-				NamespaceCheckingMode.EUGRIDPMA_GLOBUS, -1, 
-				params);
+				-1, params);
 		X509Certificate[] cert = CertificateUtils.loadCertificateChain(new FileInputStream("src/test/resources/glite-utiljava/slash-certs/slash_client_slash.cert"), Encoding.PEM);
 		ValidationResult result = validator1.validate(cert);
 		Assert.assertTrue(result.toString(), result.isValid());
@@ -79,8 +76,7 @@ public class OpensslValidatorTest
 				new OCSPParametes(OCSPCheckingMode.IGNORE));
 		OpensslCertChainValidator validator1 = new OpensslCertChainValidator(
 				"src/test/resources/expired-and-crl/openssl-trustdir",
-				NamespaceCheckingMode.EUGRIDPMA_GLOBUS, -1, 
-				new ValidatorParams(revocationParams));
+				-1, new ValidatorParams(revocationParams));
 		
 		InputStream is = new FileInputStream("src/test/resources/test-pems/expiredcert.pem");
 		X509Certificate[] certChain = CertificateUtils.loadCertificateChain(is, Encoding.PEM);

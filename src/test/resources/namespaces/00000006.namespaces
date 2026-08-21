@@ -1,3 +1,0 @@
-TO Issuer "/O=test/OU=test/CN=Certificate Authority" \
-PERMIT Subject "*"
- 
