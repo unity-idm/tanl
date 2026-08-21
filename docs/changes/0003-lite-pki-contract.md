@@ -131,8 +131,8 @@ be retained without copied validation code, provider-message matching, or a
 security regression, its dedicated PR must demonstrate that limitation and
 make the final decision explicit.
 
-The legacy CRL `IF_VALID` name is not retained. If its present-but-enforced
-behavior passes the separate decision gate, it is exposed as `IF_PRESENT`.
+The optional CRL mode is named `IF_PRESENT`. The legacy `IF_VALID` name may be
+retained only as a deprecated compatibility alias with identical behavior.
 
 ## Review and verification rule
 

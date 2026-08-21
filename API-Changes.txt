@@ -566,6 +566,34 @@ CrlCheckingMode.IF_VALID, including its combined configurations, remains on
 the compatibility implementation pending the separate IF_PRESENT decision.
 
 
+NATIVE CRL IF_PRESENT MODE
+
+CrlCheckingMode.IF_PRESENT was added for optional, present-but-enforced CRL
+validation and is now the default. CrlCheckingMode.IF_VALID is deprecated but
+retained as a compatibility alias with identical behavior.
+
+The selected path is base-validated first. For each non-anchor certificate,
+the configured store is queried for parsed X509CRLs issued by the certificate
+issuer or by an explicit directory-name cRLIssuer in its CRL Distribution
+Points extension. If none exists, that edge is unavailable and is accepted by
+CRL-only validation or passed to the next combined-policy mechanism. If any
+candidate exists, the edge is validated using strict native BC CRL checking.
+
+Candidate discovery does not pre-validate dates, signatures, distribution-
+point scope, reason coverage, delta relationships, or revocation status.
+Consequently expired, badly signed, inapplicable, incomplete, revoking, and
+otherwise rejected candidate sets remain terminal. Malformed source bytes
+which the configured store can not decode are not parsed X509CRL candidates;
+existing CRL loading-error notifications still report them.
+
+The native mode supports certificate arrays, asserted CertPaths, partially
+populated chains, indirect CRL issuers, distribution-point CRLs, delta CRLs,
+and combined CRL/OCSP order and useAllEnabled policy. Store-query and CRL
+Distribution Points parsing failures are terminal. Unrelated issuers do not
+activate strict checking. Provider messages are not parsed and native BC
+remains the sole authority for every present candidate.
+
+
 2.x HISTORICAL CHANGES
 
 1) changed semantics of the DN compare methods operating on the string representation.

@@ -15,6 +15,16 @@ import eu.emi.security.authn.x509.RevocationParameters.RevocationCheckingOrder;
 public class RevocationParametersTest
 {
 	@Test
+	public void shouldUseNamedOptionalModesByDefault()
+	{
+		RevocationParameters defaults = new RevocationParameters();
+
+		assertThat(defaults.getCrlCheckingMode(), is(CrlCheckingMode.IF_PRESENT));
+		assertThat(defaults.getOcspParameters().getCheckingMode(),
+				is(OCSPCheckingMode.IF_AVAILABLE));
+	}
+
+	@Test
 	public void shouldPreserveOverallPolicyWhenCloned()
 	{
 		OCSPParametes ocsp = new OCSPParametes(OCSPCheckingMode.REQUIRE);

@@ -133,8 +133,7 @@ public abstract class AbstractValidator implements X509CertChainValidatorExt
 		{
 			try
 			{
-				return processResult(nativeValidator.validateWithCRLs(certPath,
-						anchors, new SimpleCRLStore(crlStore)));
+				return processResult(validateNativeCRL(certPath, anchors));
 			} catch (CertificateException e)
 			{
 				return processInputError(certsA, e);
@@ -189,8 +188,7 @@ public abstract class AbstractValidator implements X509CertChainValidatorExt
 			if (isNativeBaseValidation())
 				result = nativeValidator.validate(certChain, anchors);
 			else if (isNativeCRLValidation())
-				result = nativeValidator.validateWithCRLs(certChain, anchors,
-						new SimpleCRLStore(crlStore));
+				result = validateNativeCRL(certChain, anchors);
 			else if (isNativeOCSPValidation())
 				result = validateNativeOCSP(certChain, anchors);
 			else if (isNativeCombinedRevocationValidation())
@@ -214,7 +212,7 @@ public abstract class AbstractValidator implements X509CertChainValidatorExt
 
 	private boolean isNativeCRLValidation()
 	{
-		return revocationMode.getCrlCheckingMode() == CrlCheckingMode.REQUIRE &&
+		return revocationMode.getCrlCheckingMode() != CrlCheckingMode.IGNORE &&
 				revocationMode.getOcspParameters().getCheckingMode() ==
 					OCSPCheckingMode.IGNORE;
 	}
@@ -228,7 +226,7 @@ public abstract class AbstractValidator implements X509CertChainValidatorExt
 
 	private boolean isNativeCombinedRevocationValidation()
 	{
-		return revocationMode.getCrlCheckingMode() == CrlCheckingMode.REQUIRE &&
+		return revocationMode.getCrlCheckingMode() != CrlCheckingMode.IGNORE &&
 				hasNativeOCSPConfiguration(revocationMode.getOcspParameters());
 	}
 
@@ -272,6 +270,32 @@ public abstract class AbstractValidator implements X509CertChainValidatorExt
 				usesOCSPNonce());
 	}
 
+	@SuppressWarnings("deprecation")
+	private boolean usesCRLIfPresent()
+	{
+		CrlCheckingMode mode = revocationMode.getCrlCheckingMode();
+		return mode == CrlCheckingMode.IF_PRESENT ||
+				mode == CrlCheckingMode.IF_VALID;
+	}
+
+	private ValidationResult validateNativeCRL(X509Certificate[] certificates,
+			Set<TrustAnchor> anchors) throws CertificateException
+	{
+		SimpleCRLStore store = new SimpleCRLStore(crlStore);
+		return usesCRLIfPresent() ?
+				nativeValidator.validateWithCRLsIfPresent(certificates, anchors, store) :
+				nativeValidator.validateWithCRLs(certificates, anchors, store);
+	}
+
+	private ValidationResult validateNativeCRL(CertPath path,
+			Set<TrustAnchor> anchors) throws CertificateException
+	{
+		SimpleCRLStore store = new SimpleCRLStore(crlStore);
+		return usesCRLIfPresent() ?
+				nativeValidator.validateWithCRLsIfPresent(path, anchors, store) :
+				nativeValidator.validateWithCRLs(path, anchors, store);
+	}
+
 	private ValidationResult validateNativeOCSP(CertPath path,
 			Set<TrustAnchor> anchors) throws CertificateException
 	{
@@ -292,7 +316,8 @@ public abstract class AbstractValidator implements X509CertChainValidatorExt
 	{
 		OCSPParametes parameters = revocationMode.getOcspParameters();
 		return nativeValidator.validateWithCRLsAndOCSP(certificates, anchors,
-				new SimpleCRLStore(crlStore), parameters.getCheckingMode(),
+				new SimpleCRLStore(crlStore), revocationMode.getCrlCheckingMode(),
+				parameters.getCheckingMode(),
 				parameters.getLocalResponders(), parameters.isPreferLocalResponders(),
 				getOCSPTimeout(), getOCSPCacheTtl(), getOCSPDiskCachePath(),
 				usesOCSPNonce(), revocationMode.isUseAllEnabled(),
@@ -304,7 +329,8 @@ public abstract class AbstractValidator implements X509CertChainValidatorExt
 	{
 		OCSPParametes parameters = revocationMode.getOcspParameters();
 		return nativeValidator.validateWithCRLsAndOCSP(path, anchors,
-				new SimpleCRLStore(crlStore), parameters.getCheckingMode(),
+				new SimpleCRLStore(crlStore), revocationMode.getCrlCheckingMode(),
+				parameters.getCheckingMode(),
 				parameters.getLocalResponders(), parameters.isPreferLocalResponders(),
 				getOCSPTimeout(), getOCSPCacheTtl(), getOCSPDiskCachePath(),
 				usesOCSPNonce(), revocationMode.isUseAllEnabled(),

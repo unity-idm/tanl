@@ -59,6 +59,7 @@ import org.bouncycastle.cert.ocsp.SingleResp;
 import org.bouncycastle.jcajce.PKIXExtendedParameters;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 
+import eu.emi.security.authn.x509.CrlCheckingMode;
 import eu.emi.security.authn.x509.OCSPCheckingMode;
 import eu.emi.security.authn.x509.OCSPResponder;
 import eu.emi.security.authn.x509.RevocationParameters.RevocationCheckingOrder;
@@ -115,7 +116,7 @@ final class NativeBCPKIXValidator
 	ValidationResult validate(X509Certificate[] input, Set<TrustAnchor> configuredAnchors)
 			throws CertificateException
 	{
-		return validate(input, configuredAnchors, null, null, null, false, null);
+		return validate(input, configuredAnchors, null, false, null, null, false, null);
 	}
 
 	/**
@@ -128,7 +129,22 @@ final class NativeBCPKIXValidator
 	{
 		if (crlStore == null)
 			return invalidInput(input, -1, "CRL store must not be null");
-		return validate(input, configuredAnchors, crlStore, null, null, false, null);
+		return validate(input, configuredAnchors, crlStore, false, null, null,
+				false, null);
+	}
+
+	/**
+	 * Builds and validates a path, then strictly validates each edge for which
+	 * a potentially applicable parsed CRL is present.
+	 */
+	ValidationResult validateWithCRLsIfPresent(X509Certificate[] input,
+			Set<TrustAnchor> configuredAnchors, CertStore crlStore)
+			throws CertificateException
+	{
+		if (crlStore == null)
+			return invalidInput(input, -1, "CRL store must not be null");
+		return validate(input, configuredAnchors, crlStore, true, null, null,
+				false, null);
 	}
 
 	/**
@@ -147,7 +163,7 @@ final class NativeBCPKIXValidator
 			return invalidInput(input, -1, "OCSP responder certificate must not be null");
 		try
 		{
-			return validate(input, configuredAnchors, null,
+			return validate(input, configuredAnchors, null, false,
 					responder.getAddress().toURI(), responder.getCertificate(), false, null);
 		} catch (URISyntaxException e)
 		{
@@ -211,7 +227,7 @@ final class NativeBCPKIXValidator
 			return invalidInput(input, -1, "OCSP responder certificate must not be null");
 		try
 		{
-			return validate(input, configuredAnchors, null,
+			return validate(input, configuredAnchors, null, false,
 					responder.getAddress().toURI(), responder.getCertificate(), false,
 					new OCSPFetchPolicy(timeout, cacheTtl, diskCachePath, useNonce));
 		} catch (URISyntaxException e)
@@ -256,13 +272,16 @@ final class NativeBCPKIXValidator
 	 */
 	ValidationResult validateWithCRLsAndOCSP(X509Certificate[] input,
 			Set<TrustAnchor> configuredAnchors, CertStore crlStore,
-			OCSPCheckingMode ocspMode, OCSPResponder[] localResponders,
+			CrlCheckingMode crlMode, OCSPCheckingMode ocspMode,
+			OCSPResponder[] localResponders,
 			boolean preferLocalResponders, int timeout, int cacheTtl,
 			String diskCachePath, boolean useNonce, boolean useAllEnabled,
 			RevocationCheckingOrder order) throws CertificateException
 	{
 		if (crlStore == null)
 			return invalidInput(input, -1, "CRL store must not be null");
+		if (crlMode == null || crlMode == CrlCheckingMode.IGNORE)
+			return invalidInput(input, -1, "CRL must be enabled");
 		if (ocspMode == null || ocspMode == OCSPCheckingMode.IGNORE)
 			return invalidInput(input, -1, "OCSP must be enabled");
 		if (order == null)
@@ -282,8 +301,8 @@ final class NativeBCPKIXValidator
 		OCSPFetchPolicy fetchPolicy = new OCSPFetchPolicy(timeout, cacheTtl,
 				diskCachePath, useNonce, configured, preferLocalResponders,
 				ocspMode == OCSPCheckingMode.IF_AVAILABLE, order, useAllEnabled);
-		return validate(input, configuredAnchors, crlStore, null, null, true,
-				fetchPolicy);
+		return validate(input, configuredAnchors, crlStore,
+				isCRLIfPresent(crlMode), null, null, true, fetchPolicy);
 	}
 
 	private ValidationResult validateWithOrderedOCSP(X509Certificate[] input,
@@ -303,7 +322,7 @@ final class NativeBCPKIXValidator
 			return invalid(input, -1, ValidationErrorCode.INVALID_INPUT,
 					ValidationStage.INPUT, e);
 		}
-		return validate(input, configuredAnchors, null, null, null, true,
+		return validate(input, configuredAnchors, null, false, null, null, true,
 				new OCSPFetchPolicy(timeout, cacheTtl, diskCachePath, useNonce,
 						configured, preferLocalResponders, softFailUnavailable));
 	}
@@ -315,7 +334,7 @@ final class NativeBCPKIXValidator
 	ValidationResult validateWithOCSPFromAIA(X509Certificate[] input,
 			Set<TrustAnchor> configuredAnchors) throws CertificateException
 	{
-		return validate(input, configuredAnchors, null, null, null, true, null);
+		return validate(input, configuredAnchors, null, false, null, null, true, null);
 	}
 
 	/**
@@ -362,12 +381,13 @@ final class NativeBCPKIXValidator
 	{
 		if (timeout < 0)
 			return invalidInput(input, -1, "OCSP timeout must not be negative");
-		return validate(input, configuredAnchors, null, null, null, true,
+		return validate(input, configuredAnchors, null, false, null, null, true,
 				new OCSPFetchPolicy(timeout, cacheTtl, diskCachePath, useNonce));
 	}
 
 	private ValidationResult validate(X509Certificate[] input,
 			Set<TrustAnchor> configuredAnchors, CertStore crlStore,
+			boolean crlIfPresent,
 			URI ocspResponder, X509Certificate ocspResponderCertificate,
 			boolean discoverOCSPResponders, OCSPFetchPolicy ocspFetchPolicy)
 			throws CertificateException
@@ -397,7 +417,7 @@ final class NativeBCPKIXValidator
 			// CertPathBuilder performs validation itself. Validate once more with
 			// the selected anchor so both native entry points remain explicit.
 			return validatePath(built.getCertPath(),
-					Collections.singleton(built.getTrustAnchor()), crlStore,
+					Collections.singleton(built.getTrustAnchor()), crlStore, crlIfPresent,
 					collectionStore(Arrays.asList(input)), ocspResponder,
 					ocspResponderCertificate, discoverOCSPResponders, ocspFetchPolicy);
 		} catch (CertPathBuilderException e)
@@ -407,7 +427,7 @@ final class NativeBCPKIXValidator
 				return invalid(input, -1, ValidationErrorCode.PATH_BUILDING_FAILED,
 						ValidationStage.PATH_BUILDING, e);
 			if (isCoherent(asserted))
-				return validatePath(toCertPath(asserted), anchors, crlStore,
+				return validatePath(toCertPath(asserted), anchors, crlStore, crlIfPresent,
 						collectionStore(Arrays.asList(input)), ocspResponder,
 						ocspResponderCertificate, discoverOCSPResponders, ocspFetchPolicy);
 			return invalid(input, -1, ValidationErrorCode.PATH_BUILDING_FAILED,
@@ -418,6 +438,13 @@ final class NativeBCPKIXValidator
 		}
 	}
 
+	@SuppressWarnings("deprecation")
+	private boolean isCRLIfPresent(CrlCheckingMode mode)
+	{
+		return mode == CrlCheckingMode.IF_PRESENT ||
+				mode == CrlCheckingMode.IF_VALID;
+	}
+
 	/**
 	 * Validates an asserted path directly. An included trust-anchor certificate
 	 * and anything supplied after it are removed before invoking the native
@@ -426,7 +453,8 @@ final class NativeBCPKIXValidator
 	ValidationResult validate(CertPath suppliedPath, Set<TrustAnchor> configuredAnchors)
 			throws CertificateException
 	{
-		return validate(suppliedPath, configuredAnchors, null, null, null, false, null);
+		return validate(suppliedPath, configuredAnchors, null, false, null, null,
+				false, null);
 	}
 
 	/**
@@ -438,7 +466,22 @@ final class NativeBCPKIXValidator
 	{
 		if (crlStore == null)
 			return invalidInput(null, -1, "CRL store must not be null");
-		return validate(suppliedPath, configuredAnchors, crlStore, null, null, false, null);
+		return validate(suppliedPath, configuredAnchors, crlStore, false, null, null,
+				false, null);
+	}
+
+	/**
+	 * Validates an asserted path, then strictly validates each edge for which a
+	 * potentially applicable parsed CRL is present.
+	 */
+	ValidationResult validateWithCRLsIfPresent(CertPath suppliedPath,
+			Set<TrustAnchor> configuredAnchors, CertStore crlStore)
+			throws CertificateException
+	{
+		if (crlStore == null)
+			return invalidInput(null, -1, "CRL store must not be null");
+		return validate(suppliedPath, configuredAnchors, crlStore, true, null, null,
+				false, null);
 	}
 
 	/**
@@ -457,7 +500,7 @@ final class NativeBCPKIXValidator
 			return invalidInput(null, -1, "OCSP responder certificate must not be null");
 		try
 		{
-			return validate(suppliedPath, configuredAnchors, null,
+			return validate(suppliedPath, configuredAnchors, null, false,
 					responder.getAddress().toURI(), responder.getCertificate(), false, null);
 		} catch (URISyntaxException e)
 		{
@@ -522,7 +565,7 @@ final class NativeBCPKIXValidator
 			return invalidInput(null, -1, "OCSP responder certificate must not be null");
 		try
 		{
-			return validate(suppliedPath, configuredAnchors, null,
+			return validate(suppliedPath, configuredAnchors, null, false,
 					responder.getAddress().toURI(), responder.getCertificate(), false,
 					new OCSPFetchPolicy(timeout, cacheTtl, diskCachePath, useNonce));
 		} catch (URISyntaxException e)
@@ -567,13 +610,16 @@ final class NativeBCPKIXValidator
 	 */
 	ValidationResult validateWithCRLsAndOCSP(CertPath suppliedPath,
 			Set<TrustAnchor> configuredAnchors, CertStore crlStore,
-			OCSPCheckingMode ocspMode, OCSPResponder[] localResponders,
+			CrlCheckingMode crlMode, OCSPCheckingMode ocspMode,
+			OCSPResponder[] localResponders,
 			boolean preferLocalResponders, int timeout, int cacheTtl,
 			String diskCachePath, boolean useNonce, boolean useAllEnabled,
 			RevocationCheckingOrder order) throws CertificateException
 	{
 		if (crlStore == null)
 			return invalidInput(null, -1, "CRL store must not be null");
+		if (crlMode == null || crlMode == CrlCheckingMode.IGNORE)
+			return invalidInput(null, -1, "CRL must be enabled");
 		if (ocspMode == null || ocspMode == OCSPCheckingMode.IGNORE)
 			return invalidInput(null, -1, "OCSP must be enabled");
 		if (order == null)
@@ -593,8 +639,8 @@ final class NativeBCPKIXValidator
 		OCSPFetchPolicy fetchPolicy = new OCSPFetchPolicy(timeout, cacheTtl,
 				diskCachePath, useNonce, configured, preferLocalResponders,
 				ocspMode == OCSPCheckingMode.IF_AVAILABLE, order, useAllEnabled);
-		return validate(suppliedPath, configuredAnchors, crlStore, null, null,
-				true, fetchPolicy);
+		return validate(suppliedPath, configuredAnchors, crlStore,
+				isCRLIfPresent(crlMode), null, null, true, fetchPolicy);
 	}
 
 	private ValidationResult validateWithOrderedOCSP(CertPath suppliedPath,
@@ -614,7 +660,7 @@ final class NativeBCPKIXValidator
 			return invalid(null, -1, ValidationErrorCode.INVALID_INPUT,
 					ValidationStage.INPUT, e);
 		}
-		return validate(suppliedPath, configuredAnchors, null, null, null, true,
+		return validate(suppliedPath, configuredAnchors, null, false, null, null, true,
 				new OCSPFetchPolicy(timeout, cacheTtl, diskCachePath, useNonce,
 						configured, preferLocalResponders, softFailUnavailable));
 	}
@@ -626,7 +672,8 @@ final class NativeBCPKIXValidator
 	ValidationResult validateWithOCSPFromAIA(CertPath suppliedPath,
 			Set<TrustAnchor> configuredAnchors) throws CertificateException
 	{
-		return validate(suppliedPath, configuredAnchors, null, null, null, true, null);
+		return validate(suppliedPath, configuredAnchors, null, false, null, null,
+				true, null);
 	}
 
 	/**
@@ -673,12 +720,13 @@ final class NativeBCPKIXValidator
 	{
 		if (timeout < 0)
 			return invalidInput(null, -1, "OCSP timeout must not be negative");
-		return validate(suppliedPath, configuredAnchors, null, null, null, true,
+		return validate(suppliedPath, configuredAnchors, null, false, null, null, true,
 				new OCSPFetchPolicy(timeout, cacheTtl, diskCachePath, useNonce));
 	}
 
 	private ValidationResult validate(CertPath suppliedPath,
 			Set<TrustAnchor> configuredAnchors, CertStore crlStore,
+			boolean crlIfPresent,
 			URI ocspResponder, X509Certificate ocspResponderCertificate,
 			boolean discoverOCSPResponders, OCSPFetchPolicy ocspFetchPolicy)
 			throws CertificateException
@@ -710,7 +758,7 @@ final class NativeBCPKIXValidator
 				return valid(Collections.singletonList(target));
 			return noTrustAnchor(diagnosticChain, ValidationStage.PATH_VALIDATION);
 		}
-		return validatePath(toCertPath(normalized), anchors, crlStore,
+		return validatePath(toCertPath(normalized), anchors, crlStore, crlIfPresent,
 				collectionStore(supplied), ocspResponder,
 				ocspResponderCertificate, discoverOCSPResponders, ocspFetchPolicy);
 	}
@@ -728,7 +776,8 @@ final class NativeBCPKIXValidator
 	}
 
 	private ValidationResult validatePath(CertPath path, Set<TrustAnchor> anchors,
-			CertStore crlStore, CertStore certificateStore, URI ocspResponder,
+			CertStore crlStore, boolean crlIfPresent, CertStore certificateStore,
+			URI ocspResponder,
 			X509Certificate ocspResponderCertificate, boolean discoverOCSPResponders,
 			OCSPFetchPolicy ocspFetchPolicy)
 	{
@@ -758,9 +807,17 @@ final class NativeBCPKIXValidator
 		{
 			ValidationResult revocationResult = validateCombinedRevocation(path,
 					result.getTrustAnchor(), crlStore, certificateStore,
-					diagnosticChain, ocspFetchPolicy);
+					diagnosticChain, crlIfPresent, ocspFetchPolicy);
 			if (revocationResult != null)
 				return revocationResult;
+		}
+		else if (crlStore != null && crlIfPresent)
+		{
+			ValidationResult crlResult = validateCRLsIfPresent(path,
+					result.getTrustAnchor(), crlStore, certificateStore,
+					diagnosticChain);
+			if (crlResult != null)
+				return crlResult;
 		}
 		else if (crlStore != null)
 		{
@@ -824,7 +881,7 @@ final class NativeBCPKIXValidator
 	private ValidationResult validateCombinedRevocation(CertPath path,
 			TrustAnchor selectedAnchor, CertStore crlStore,
 			CertStore certificateStore, X509Certificate[] diagnosticChain,
-			OCSPFetchPolicy fetchPolicy)
+			boolean crlIfPresent, OCSPFetchPolicy fetchPolicy)
 	{
 		if (fetchPolicy == null || fetchPolicy.revocationOrder == null)
 			throw new IllegalStateException(
@@ -841,11 +898,11 @@ final class NativeBCPKIXValidator
 
 			if (fetchPolicy.revocationOrder == RevocationCheckingOrder.CRL_OCSP)
 			{
-				ValidationResult crlFailure = validateCRLEdge(certificate, issuer,
-						crlStore, certificateStore, diagnosticChain, i);
-				if (crlFailure != null)
-					return crlFailure;
-				if (!fetchPolicy.useAllEnabled)
+				RevocationCheckResult crl = validateCRLEdge(certificate, issuer,
+						crlStore, certificateStore, diagnosticChain, i, crlIfPresent);
+				if (crl.failure != null)
+					return crl.failure;
+				if (crl.verified && !fetchPolicy.useAllEnabled)
 					continue;
 				RevocationCheckResult ocsp = validateOrderedOCSPEdge(certificate,
 						issuer, path, fetchPolicy, certificateStore,
@@ -861,37 +918,71 @@ final class NativeBCPKIXValidator
 					return ocsp.failure;
 				if (ocsp.verified && !fetchPolicy.useAllEnabled)
 					continue;
-				ValidationResult crlFailure = validateCRLEdge(certificate, issuer,
-						crlStore, certificateStore, diagnosticChain, i);
-				if (crlFailure != null)
-					return crlFailure;
+				RevocationCheckResult crl = validateCRLEdge(certificate, issuer,
+						crlStore, certificateStore, diagnosticChain, i, crlIfPresent);
+				if (crl.failure != null)
+					return crl.failure;
 			}
 		}
 		return null;
 	}
 
-	private ValidationResult validateCRLEdge(X509Certificate certificate,
-			X509Certificate issuer, CertStore crlStore, CertStore certificateStore,
-			X509Certificate[] diagnosticChain, int position)
+	private ValidationResult validateCRLsIfPresent(CertPath path,
+			TrustAnchor selectedAnchor, CertStore crlStore,
+			CertStore certificateStore, X509Certificate[] diagnosticChain)
 	{
+		List<? extends Certificate> certificates = path.getCertificates();
+		for (int i=0; i<certificates.size(); i++)
+		{
+			X509Certificate certificate = (X509Certificate) certificates.get(i);
+			X509Certificate issuer = issuer(certificates, selectedAnchor, i);
+			if (issuer == null)
+				return ocspDiscoveryFailure(diagnosticChain, path, i,
+						"CRL validation requires the issuer trust-anchor certificate",
+						null);
+			RevocationCheckResult checked = validateCRLEdge(certificate, issuer,
+					crlStore, certificateStore, diagnosticChain, i, true);
+			if (checked.failure != null)
+				return checked.failure;
+		}
+		return null;
+	}
+
+	private RevocationCheckResult validateCRLEdge(X509Certificate certificate,
+			X509Certificate issuer, CertStore crlStore, CertStore certificateStore,
+			X509Certificate[] diagnosticChain, int position, boolean ifPresent)
+	{
+		if (ifPresent)
+			try
+			{
+				if (!CRLCandidateDiscovery.hasPotentialCRL(certificate, crlStore))
+					return RevocationCheckResult.unavailable();
+			} catch (Exception e)
+			{
+				return RevocationCheckResult.failure(invalid(diagnosticChain, position,
+						ValidationErrorCode.PKIX_FAILURE,
+						ValidationStage.REVOCATION, e));
+			}
 		CertPath edgePath = toCertPath(Collections.singletonList(certificate));
 		Set<TrustAnchor> edgeAnchor = Collections.singleton(
 				new TrustAnchor(issuer, null));
 		try
 		{
 			validateNative(edgePath, edgeAnchor, certificateStore, crlStore);
-			return null;
+			return RevocationCheckResult.verified();
 		} catch (CertPathValidatorException e)
 		{
-			return invalidRevocationValidation(diagnosticChain, e, position);
+			return RevocationCheckResult.failure(
+					invalidRevocationValidation(diagnosticChain, e, position));
 		} catch (InvalidAlgorithmParameterException e)
 		{
 			throw new IllegalStateException(
 					"Native BC PKIX validator rejected per-certificate CRL parameters", e);
 		} catch (RuntimeException e)
 		{
-			return invalid(diagnosticChain, position, ValidationErrorCode.PKIX_FAILURE,
-					ValidationStage.REVOCATION, e);
+			return RevocationCheckResult.failure(invalid(diagnosticChain, position,
+					ValidationErrorCode.PKIX_FAILURE,
+					ValidationStage.REVOCATION, e));
 		}
 	}
 

@@ -48,12 +48,12 @@ public class RevocationParameters implements Cloneable
 	
 	
 	/**
-	 * Default constructor, using the default {@link CrlCheckingMode#IF_VALID} and default {@link OCSPParametes}.
+	 * Default constructor, using the default {@link CrlCheckingMode#IF_PRESENT} and default {@link OCSPParametes}.
 	 * One positive revocation source is enough to finish validation, order is set to OCSP first, then CRL.
 	 */
 	public RevocationParameters()
 	{
-		this(CrlCheckingMode.IF_VALID, new OCSPParametes());
+		this(CrlCheckingMode.IF_PRESENT, new OCSPParametes());
 	}
 	
 	/**
