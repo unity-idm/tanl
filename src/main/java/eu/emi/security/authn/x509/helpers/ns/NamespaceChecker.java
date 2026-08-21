@@ -15,7 +15,6 @@ import eu.emi.security.authn.x509.NamespaceCheckingMode;
 import eu.emi.security.authn.x509.ValidationError;
 import eu.emi.security.authn.x509.ValidationErrorCode;
 import eu.emi.security.authn.x509.impl.X500NameUtils;
-import eu.emi.security.authn.x509.proxy.ProxyUtils;
 
 /**
  * Implements namespace policy checking. The class is populated with a namespace policy store
@@ -58,7 +57,7 @@ public class NamespaceChecker
 	
 	/**
 	 * Checks all certificates in the chain whether they are correct w.r.t. namespace policies
-	 * which are configured. If the parameter contains any proxy certificates those are ignored.
+	 * which are configured.
 	 * Self signed certificates in the chain are ignored, so the root CA certificate may be safely 
 	 * present in the chain. 
 	 * @param chain to be checked
@@ -77,9 +76,6 @@ public class NamespaceChecker
 			X500Principal certSubject = chain[i].getSubjectX500Principal();
 			if (certIssuer.equals(certSubject))
 				continue;
-			if (ProxyUtils.isProxy(chain[i]))
-				continue;
-			
 			for (NamespacesStore nsStore: nsStores)
 			{
 				List<NamespacePolicy> policies = nsStore.getPolicies(chain, i);

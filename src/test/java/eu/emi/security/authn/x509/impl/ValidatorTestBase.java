@@ -19,7 +19,6 @@ import org.junit.Assert;
 import eu.emi.security.authn.x509.CrlCheckingMode;
 import eu.emi.security.authn.x509.OCSPCheckingMode;
 import eu.emi.security.authn.x509.OCSPParametes;
-import eu.emi.security.authn.x509.ProxySupport;
 import eu.emi.security.authn.x509.StoreUpdateListener;
 import eu.emi.security.authn.x509.ValidationError;
 import eu.emi.security.authn.x509.ValidationResult;
@@ -48,11 +47,11 @@ public class ValidatorTestBase
 			String trustAnchorPrefix, String[] trustAnchors, String trustAnchorSuffix,
 			String crlPrefix, String[] crls, String crlSuffix, 
 			X509Certificate[] toCheck,
-			Set<String> policies, ProxySupport proxySupport, CrlCheckingMode revocationSupport) throws Exception
+			Set<String> policies, CrlCheckingMode revocationSupport) throws Exception
 	{
 		OCSPParametes ocspParams = new OCSPParametes(OCSPCheckingMode.IGNORE);
 		doPathTest(expectedErrors, trustAnchorPrefix, trustAnchors, trustAnchorSuffix, crlPrefix, crls, 
-				crlSuffix, toCheck, policies, proxySupport, revocationSupport, ocspParams);
+			crlSuffix, toCheck, policies, revocationSupport, ocspParams);
 		
 	}
 	
@@ -61,7 +60,7 @@ public class ValidatorTestBase
 			String trustAnchorPrefix, String[] trustAnchors, String trustAnchorSuffix,
 			String crlPrefix, String[] crls, String crlSuffix, 
 			X509Certificate[] toCheck,
-			Set<String> policies, ProxySupport proxySupport, CrlCheckingMode revocationSupport,
+			Set<String> policies, CrlCheckingMode revocationSupport,
 			OCSPParametes ocspParams) throws Exception
 	{
 		List<String> trustedLocations = new ArrayList<String>();
@@ -98,7 +97,7 @@ public class ValidatorTestBase
 				-1, 
 				0, 
 				null, 
-				new ValidatorParamsExt(revocationParams, proxySupport, listeners));
+				new ValidatorParamsExt(revocationParams, listeners));
 		
 		ValidationResult result = validator.validate(toCheck);
 		

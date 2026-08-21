@@ -23,6 +23,56 @@ The exact removed and replacement Java symbols will be appended by the PR that
 changes each part of the API.
 
 
+PROXY CERTIFICATE SUPPORT REMOVED
+
+Proxy-aware validation and proxy generation/inspection are no longer part of
+the library. Normal PKIX processing rejects both legacy proxy certificates and
+RFC 3820 proxy certificates; there is no compatibility flag that enables them.
+
+The following public types were removed:
+
+- eu.emi.security.authn.x509.ProxySupport
+- eu.emi.security.authn.x509.proxy.BaseProxyCertificateOptions
+- eu.emi.security.authn.x509.proxy.CertificateExtension
+- eu.emi.security.authn.x509.proxy.OidAndValue
+- eu.emi.security.authn.x509.proxy.ProxyCSR
+- eu.emi.security.authn.x509.proxy.ProxyCSRGenerator
+- eu.emi.security.authn.x509.proxy.ProxyCSRInfo
+- eu.emi.security.authn.x509.proxy.ProxyCertificate
+- eu.emi.security.authn.x509.proxy.ProxyCertificateOptions
+- eu.emi.security.authn.x509.proxy.ProxyChainInfo
+- eu.emi.security.authn.x509.proxy.ProxyChainType
+- eu.emi.security.authn.x509.proxy.ProxyGenerator
+- eu.emi.security.authn.x509.proxy.ProxyPolicy
+- eu.emi.security.authn.x509.proxy.ProxyRequestOptions
+- eu.emi.security.authn.x509.proxy.ProxyType
+- eu.emi.security.authn.x509.proxy.ProxyUtils
+
+The following members and constructor signatures were removed:
+
+- X509CertChainValidatorExt.getProxySupport()
+- ValidatorParams.DEFAULT_PROXY_SUPPORT
+- ValidatorParams(RevocationParameters, ProxySupport)
+- ValidatorParams(RevocationParameters, ProxySupport,
+  Collection<? extends StoreUpdateListener>)
+- ValidatorParams.isAllowProxy()
+- ValidatorParams.setAllowProxy(ProxySupport)
+- ValidatorParamsExt(RevocationParametersExt, ProxySupport)
+- ValidatorParamsExt(RevocationParametersExt, ProxySupport,
+  Collection<? extends StoreUpdateListener>)
+
+Use ValidatorParams and ValidatorParamsExt constructors with only revocation
+settings and, where needed, initial store-update listeners.
+
+The proxyEECInChain, proxyLength, proxyNoIssuer, proxyCASet,
+proxyIssuerAltNameSet, proxySubjectAltNameSet, proxyIssuedByCa,
+proxyNoIssuerSubject, proxySubjectInconsistent, proxyIssuerNoDsig,
+proxySubjectOneRDN, proxySubjectMultiLastRDN, proxySubjectLastRDNNotCN,
+proxySubjectBaseWrong, proxyTypeInconsistent, and proxyInconsistentlyLimited
+ValidationErrorCode values were removed. The INCONSISTENT_PROXY_CHAIN and
+INVALID_PROXY_CERT ValidationErrorCategory values were removed with them.
+
+
 2.x HISTORICAL CHANGES
 
 1) changed semantics of the DN compare methods operating on the string representation.

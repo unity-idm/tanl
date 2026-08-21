@@ -41,7 +41,7 @@ public class InMemoryKeystoreCertChainValidator extends PlainCRLValidator
 	 * ones defined by the CA extensions.
 	 * 
 	 * @param keystore truststore to use
-	 * @param params common validator settings (revocation, initial listeners, proxy support, ...)
+	 * @param params common validator settings (revocation and initial listeners)
 	 * @throws IOException if the truststore can not be read
 	 * @throws KeyStoreException if the truststore can not be parsed or 
 	 * if password is incorrect. 
@@ -52,7 +52,7 @@ public class InMemoryKeystoreCertChainValidator extends PlainCRLValidator
 	{
 		super(params.getRevocationSettings(), params.getInitialListeners());
 		store = new JDKInMemoryTrustAnchorStore(keystore);
-		init(store, crlStoreImpl, params.isAllowProxy(), params.getRevocationSettings());
+		init(store, crlStoreImpl, params.getRevocationSettings());
 	}
 	
 	/**
@@ -89,6 +89,6 @@ public class InMemoryKeystoreCertChainValidator extends PlainCRLValidator
 	public synchronized void setTruststore(KeyStore ks) throws KeyStoreException
 	{
 		store = new JDKInMemoryTrustAnchorStore(ks);
-		init(store, null, getProxySupport(), getRevocationCheckingMode());
+		init(store, null, getRevocationCheckingMode());
 	}
 }

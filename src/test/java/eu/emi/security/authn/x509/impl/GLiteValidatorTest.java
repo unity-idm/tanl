@@ -23,7 +23,6 @@
 package eu.emi.security.authn.x509.impl;
 
 import java.io.FileInputStream;
-import java.security.KeyStore;
 import java.security.cert.X509Certificate;
 import java.util.Collections;
 import java.util.List;
@@ -35,7 +34,6 @@ import eu.emi.security.authn.x509.CrlCheckingMode;
 import eu.emi.security.authn.x509.NamespaceCheckingMode;
 import eu.emi.security.authn.x509.OCSPCheckingMode;
 import eu.emi.security.authn.x509.OCSPParametes;
-import eu.emi.security.authn.x509.ProxySupport;
 import eu.emi.security.authn.x509.RevocationParameters;
 import eu.emi.security.authn.x509.StoreUpdateListener;
 import eu.emi.security.authn.x509.ValidationError;
@@ -46,102 +44,29 @@ import eu.emi.security.authn.x509.impl.CertificateUtils.Encoding;
 public class GLiteValidatorTest
 {
 	private static final TestCase[] trustedTestCases = {
-			new TestCase("trusted-certs/trusted_client", false, true),
-			new TestCase("trusted-certs/trusted_client_exp", false, false),
-			new TestCase("trusted-certs/trusted_clientserver", false, true),
-			new TestCase("trusted-certs/trusted_clientserver_exp", false, false),
-			new TestCase("trusted-certs/trusted_fclient", false, true),
-			new TestCase("trusted-certs/trusted_fclient_exp", false, false),
-			new TestCase("trusted-certs/trusted_none", false, true),
-			new TestCase("trusted-certs/trusted_none_exp", false, false),
-			new TestCase("trusted-certs/trusted_server", false, true),
-			new TestCase("trusted-certs/trusted_server_exp", false, false)
+			new TestCase("trusted-certs/trusted_client", true),
+			new TestCase("trusted-certs/trusted_client_exp", false),
+			new TestCase("trusted-certs/trusted_clientserver", true),
+			new TestCase("trusted-certs/trusted_clientserver_exp", false),
+			new TestCase("trusted-certs/trusted_fclient", true),
+			new TestCase("trusted-certs/trusted_fclient_exp", false),
+			new TestCase("trusted-certs/trusted_none", true),
+			new TestCase("trusted-certs/trusted_none_exp", false),
+			new TestCase("trusted-certs/trusted_server", true),
+			new TestCase("trusted-certs/trusted_server_exp", false),
+			new TestCase("trusted-certs/trusted_bigclient", true)
 	};
 	
 	private static final TestCase[] trustedRevokedTestCases = {
-			new TestCase("trusted-certs/trusted_client_rev", false, false),
-			new TestCase("trusted-certs/trusted_clientserver_rev", false, false),
-			new TestCase("trusted-certs/trusted_fclient_rev", false, false),
-			new TestCase("trusted-certs/trusted_none_rev", false, false),
-			new TestCase("trusted-certs/trusted_server_rev", false, false)
-	};
-	
-	private static final TestCase[] trustedProxiesTestCases = {
-			new TestCase("trusted-certs/trusted_client_exp.proxy.grid_proxy", true, false),
-			new TestCase("trusted-certs/trusted_client.proxy.grid_proxy", true, true),
-			new TestCase("trusted-certs/trusted_client.proxy_exp.grid_proxy", true, false),
-			new TestCase("trusted-certs/trusted_clientserver_exp.proxy.grid_proxy", true, false),
-			new TestCase("trusted-certs/trusted_clientserver.proxy.grid_proxy", true, true),
-			new TestCase("trusted-certs/trusted_clientserver.proxy_exp.grid_proxy", true, false),
-			new TestCase("trusted-certs/trusted_fclient_exp.proxy.grid_proxy", true, false),
-			new TestCase("trusted-certs/trusted_fclient.proxy.grid_proxy", true, true),
-			new TestCase("trusted-certs/trusted_fclient.proxy_exp.grid_proxy", true, false),
-			new TestCase("trusted-certs/trusted_none_exp.proxy.grid_proxy", true, false),
-			new TestCase("trusted-certs/trusted_none.proxy.grid_proxy", true, true),
-			new TestCase("trusted-certs/trusted_none.proxy_exp.grid_proxy", true, false),
-			new TestCase("trusted-certs/trusted_server_exp.proxy.grid_proxy", true, false),
-			new TestCase("trusted-certs/trusted_server.proxy.grid_proxy", true, true),
-			new TestCase("trusted-certs/trusted_server.proxy_exp.grid_proxy", true, false),
-			new TestCase("trusted-certs/trusted_client.proxy_rfc.grid_proxy", true, true),
-			new TestCase("trusted-certs/trusted_client.proxy_rfc_plen.proxy_rfc.proxy_rfc.grid_proxy", true, false),
-			new TestCase("trusted-certs/trusted_client.proxy_rfc_plen.proxy_rfc.grid_proxy", true, true),
-			new TestCase("trusted-certs/trusted_client.proxy_rfc_lim.grid_proxy", true, true),
-			new TestCase("trusted-certs/trusted_client.proxy_rfc.proxy.grid_proxy", true, false),
-			new TestCase("trusted-certs/trusted_client.proxy_rfc_lim.proxy_rfc.grid_proxy", true, false),
-			new TestCase("trusted-certs/trusted_client.proxy_rfc.proxy_rfc_lim.grid_proxy", true, true),
-			new TestCase("trusted-certs/trusted_client.proxy_rfc_anyp.grid_proxy", true, true),
-			new TestCase("trusted-certs/trusted_client.proxy_rfc_indep.grid_proxy", true, true)
-	};
-	
-	private static final TestCase[] trustedRevokedProxiesTestCases = {
-			new TestCase("trusted-certs/trusted_client_rev.proxy.grid_proxy", true, false),
-			new TestCase("trusted-certs/trusted_clientserver_rev.proxy.grid_proxy", true, false),
-			new TestCase("trusted-certs/trusted_fclient_rev.proxy.grid_proxy", true, false),
-			new TestCase("trusted-certs/trusted_none_rev.proxy.grid_proxy", true, false),
-			new TestCase("trusted-certs/trusted_server_rev.proxy.grid_proxy", true, false)
+			new TestCase("trusted-certs/trusted_client_rev", false),
+			new TestCase("trusted-certs/trusted_clientserver_rev", false),
+			new TestCase("trusted-certs/trusted_fclient_rev", false),
+			new TestCase("trusted-certs/trusted_none_rev", false),
+			new TestCase("trusted-certs/trusted_server_rev", false)
 	};
 	
 	private static final TestCase[] fakeCertsTestCases = {
-			new TestCase("fake-certs/fake_client", false, false),
-			new TestCase("fake-certs/fake_client.proxy", false, false)
-	};
-	
-	private static final TestCase[] fakeProxiesTestCases = {
-			new TestCase("fake-certs/fake_client.proxy.grid_proxy", true, false)
-	};
-	
-	private static final TestCase[] miscProxiesTestCases = {
-			new TestCase("trusted-certs/trusted_client.proxy_dnerror2.grid_proxy", true, false),
-			new TestCase("trusted-certs/trusted_client.proxy_dnerror.grid_proxy", true, false),
-			new TestCase("trusted-certs/trusted_client.proxy_dnerror.proxy.grid_proxy", true, false),
-			new TestCase("trusted-certs/trusted_client.proxy.proxy_dnerror.grid_proxy", true, false),
-			new TestCase("trusted-certs/trusted_client.proxy_exp.proxy.grid_proxy", true, false),
-			new TestCase("trusted-certs/trusted_client.proxy_exp.proxy_exp.grid_proxy", true, false),
-			new TestCase("trusted-certs/trusted_client.proxy.proxy_exp.grid_proxy", true, false),
-			new TestCase("trusted-certs/trusted_client.proxy.proxy.grid_proxy", true, true),
-			new TestCase("trusted-certs/trusted_bigclient",false, true)
-	};
-	
-	private static final TestCase[] subsubProxiesTestCases = {
-			new TestCase("subsubca-certs/subsubca_fullchainclient.proxy.grid_proxy", true, true),
-			new TestCase("subsubca-certs/subsubca_fullchainclient.proxy.proxy.grid_proxy", true, true),
-			new TestCase("subsubca-certs/subsubca_client.proxy.grid_proxy", true, true),
-			new TestCase("subsubca-certs/subsubca_client.proxy.proxy.grid_proxy", true, true)
-	};
-	
-	private static final TestCase[] subsubRevokedProxiesTestCases = {
-			new TestCase("subsubca-certs/subsubca_client_rev.proxy.grid_proxy", true, false),
-			new TestCase("subsubca-certs/subsubca_client_rev.proxy.proxy.grid_proxy", true, false)
-	};
-
-	private static final TestCase[] subsubBadDNProxiesTestCases = {
-			new TestCase("subsubca-certs/subsubca_clientbaddn.proxy.grid_proxy", true, false),
-			new TestCase("subsubca-certs/subsubca_clientbaddn.proxy.proxy.grid_proxy", true, false)
-	};
-	
-	private static final TestCase[] bigProxiesTestCases = {
-			new TestCase("big-certs/big_client.proxy.grid_proxy", true, true),
-			new TestCase("big-certs/big_client.proxy.proxy.grid_proxy", true, true)
+			new TestCase("fake-certs/fake_client", false)
 	};
 
 	protected void gliteTest(boolean reverse, TestCase tc,
@@ -163,21 +88,10 @@ public class GLiteValidatorTest
 	{
 		System.out.println("Test Case: " + tc.name);
 		
-		X509Certificate[] toCheck;
-		if (tc.isProxy)
-		{
-			KeyStore ks = CertificateUtils.loadPEMKeystore(new FileInputStream(
-				"src/test/resources/glite-utiljava/" + tc.name), 
-				(char[])null, "test".toCharArray());
-			toCheck = CertificateUtils.convertToX509Chain(
-				ks.getCertificateChain(CertificateUtils.DEFAULT_KEYSTORE_ALIAS));
-		} else
-		{
-			toCheck = new X509Certificate[] {
-					CertificateUtils.loadCertificate(new FileInputStream(
-					"src/test/resources/glite-utiljava/" + tc.name + ".cert"), 
-					Encoding.PEM) };
-		}
+		X509Certificate[] toCheck = new X509Certificate[] {
+				CertificateUtils.loadCertificate(new FileInputStream(
+				"src/test/resources/glite-utiljava/" + tc.name + ".cert"),
+				Encoding.PEM) };
 		int expectedErrors = 0;
 		boolean expectedResult = tc.valid;
 		if (reverse)
@@ -200,9 +114,8 @@ public class GLiteValidatorTest
 		List<StoreUpdateListener> listeners = Collections.singletonList(l);
 		
 		ValidatorParams params = new ValidatorParams(new RevocationParameters(revocation ? 
-						CrlCheckingMode.REQUIRE : CrlCheckingMode.IF_VALID, 
-				new OCSPParametes(OCSPCheckingMode.IGNORE)), 
-				tc.isProxy ? ProxySupport.ALLOW : ProxySupport.DENY, listeners);
+					CrlCheckingMode.REQUIRE : CrlCheckingMode.IF_VALID,
+			new OCSPParametes(OCSPCheckingMode.IGNORE)), listeners);
 		OpensslCertChainValidator validator = new OpensslCertChainValidator(
 				"src/test/resources/glite-utiljava/grid-security/"+trustStore+"/",
 				openssl1Mode,
@@ -233,12 +146,10 @@ public class GLiteValidatorTest
 	{
 		private String name;
 		private boolean valid;
-		private boolean isProxy;
-		public TestCase(String name, boolean isProxy, boolean valid)
+		public TestCase(String name, boolean valid)
 		{
 			this.name = name;
 			this.valid = valid;
-			this.isProxy = isProxy;
 		}
 	}
 	
@@ -253,23 +164,7 @@ public class GLiteValidatorTest
 			gliteTest(false, tc, truststore, revocation, openssl1Mode);
 		for (TestCase tc: trustedRevokedTestCases)
 			gliteTest(false, tc, truststore, revocation, openssl1Mode);
-		for (TestCase tc: trustedProxiesTestCases)
-			gliteTest(false, tc, truststore, revocation, openssl1Mode);
-		for (TestCase tc: trustedRevokedProxiesTestCases)
-			gliteTest(false, tc, truststore, revocation, openssl1Mode);
 		for (TestCase tc: fakeCertsTestCases)
-			gliteTest(false, tc, truststore, revocation, openssl1Mode);
-		for (TestCase tc: fakeProxiesTestCases)
-			gliteTest(false, tc, truststore, revocation, openssl1Mode);
-		for (TestCase tc: miscProxiesTestCases)
-			gliteTest(false, tc, truststore, revocation, openssl1Mode);
-		for (TestCase tc: subsubProxiesTestCases)
-			gliteTest(false, tc, truststore, revocation, openssl1Mode);
-		for (TestCase tc: subsubRevokedProxiesTestCases)
-			gliteTest(false, tc, truststore, revocation, openssl1Mode);
-		for (TestCase tc: subsubBadDNProxiesTestCases)
-			gliteTest(false, tc, truststore, revocation, openssl1Mode);
-		for (TestCase tc: bigProxiesTestCases)
 			gliteTest(false, tc, truststore, revocation, openssl1Mode);
 	}
 
@@ -284,23 +179,7 @@ public class GLiteValidatorTest
 			gliteTest(false, tc, truststore, revocation, openssl1Mode);
 		for (TestCase tc: trustedRevokedTestCases)
 			gliteTest(false, tc, truststore, revocation, openssl1Mode);
-		for (TestCase tc: trustedProxiesTestCases)
-			gliteTest(false, tc, truststore, revocation, openssl1Mode);
-		for (TestCase tc: trustedRevokedProxiesTestCases)
-			gliteTest(false, tc, truststore, revocation, openssl1Mode);
 		for (TestCase tc: fakeCertsTestCases)
-			gliteTest(false, tc, truststore, revocation, openssl1Mode);
-		for (TestCase tc: fakeProxiesTestCases)
-			gliteTest(false, tc, truststore, revocation, openssl1Mode);
-		for (TestCase tc: miscProxiesTestCases)
-			gliteTest(false, tc, truststore, revocation, openssl1Mode);
-		for (TestCase tc: subsubProxiesTestCases)
-			gliteTest(false, tc, truststore, revocation, openssl1Mode);
-		for (TestCase tc: subsubRevokedProxiesTestCases)
-			gliteTest(false, tc, truststore, revocation, openssl1Mode);
-		for (TestCase tc: subsubBadDNProxiesTestCases)
-			gliteTest(false, tc, truststore, revocation, openssl1Mode);
-		for (TestCase tc: bigProxiesTestCases)
 			gliteTest(false, tc, truststore, revocation, openssl1Mode);
 	}
 
@@ -316,23 +195,7 @@ public class GLiteValidatorTest
 			gliteTest(false, tc, truststore, revocation, openssl1Mode);
 		for (TestCase tc: trustedRevokedTestCases)
 			gliteTest(true, tc, truststore, revocation, openssl1Mode);
-		for (TestCase tc: trustedProxiesTestCases)
-			gliteTest(false, tc, truststore, revocation, openssl1Mode);
-		for (TestCase tc: trustedRevokedProxiesTestCases)
-			gliteTest(true, tc, truststore, revocation, openssl1Mode);
 		for (TestCase tc: fakeCertsTestCases)
-			gliteTest(false, tc, truststore, revocation, openssl1Mode);
-		for (TestCase tc: fakeProxiesTestCases)
-			gliteTest(false, tc, truststore, revocation, openssl1Mode);
-		for (TestCase tc: miscProxiesTestCases)
-			gliteTest(false, tc, truststore, revocation, openssl1Mode);
-		for (TestCase tc: subsubProxiesTestCases)
-			gliteTest(false, tc, truststore, revocation, openssl1Mode);
-		for (TestCase tc: subsubRevokedProxiesTestCases)
-			gliteTest(true, tc, truststore, revocation, openssl1Mode);
-		for (TestCase tc: subsubBadDNProxiesTestCases)
-			gliteTest(false, tc, truststore, revocation, openssl1Mode);
-		for (TestCase tc: bigProxiesTestCases)
 			gliteTest(false, tc, truststore, revocation, openssl1Mode);
 	}
 
@@ -347,55 +210,12 @@ public class GLiteValidatorTest
 	}
 
 	@Test
-	public void test4()
-	{
-		String truststore = "certificates-rootwithpolicy";
-		boolean revocation = false;
-		boolean openssl1Mode = false;
-		for (TestCase tc: subsubProxiesTestCases)
-			gliteTest(false, tc, truststore, revocation, openssl1Mode);
-		for (TestCase tc: subsubRevokedProxiesTestCases)
-			gliteTest(false, tc, truststore, revocation, openssl1Mode);
-		for (TestCase tc: subsubBadDNProxiesTestCases)
-			gliteTest(false, tc, truststore, revocation, openssl1Mode);
-	}
-	
-	@Test
-	public void test5()
-	{
-		String truststore = "certificates-subcawithpolicy";
-		boolean revocation = false;
-		boolean openssl1Mode = false;
-		
-		for (TestCase tc: subsubProxiesTestCases)
-			gliteTest(false, tc, truststore, revocation, openssl1Mode);
-		for (TestCase tc: subsubRevokedProxiesTestCases)
-			gliteTest(false, tc, truststore, revocation, openssl1Mode);
-		for (TestCase tc: subsubBadDNProxiesTestCases)
-			gliteTest(false, tc, truststore, revocation, openssl1Mode);
-	}	
-
-	@Test
-	public void test6()
-	{
-		String truststore = "certificates-rootallowsubsubdeny";
-		boolean revocation = false;
-		boolean openssl1Mode = false;
-		for (TestCase tc: subsubProxiesTestCases)
-			gliteTest(true, tc, truststore, revocation, openssl1Mode);
-		for (TestCase tc: subsubRevokedProxiesTestCases)
-			gliteTest(false, tc, truststore, revocation, openssl1Mode);
-		for (TestCase tc: subsubBadDNProxiesTestCases)
-			gliteTest(false, tc, truststore, revocation, openssl1Mode);
-	}
-	
-	@Test
 	public void testSlash()
 	{
 		String truststore = "certificates";
 		boolean revocation = false;
 		boolean openssl1Mode = false;
-		TestCase slash = new TestCase("slash-certs/slash_client_slash", false, true);
+		TestCase slash = new TestCase("slash-certs/slash_client_slash", true);
 		gliteTest(false, slash, truststore, revocation, openssl1Mode);
 	}
 }

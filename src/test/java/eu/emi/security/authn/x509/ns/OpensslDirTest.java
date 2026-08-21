@@ -17,7 +17,6 @@ import org.apache.commons.io.FileUtils;
 import org.junit.Test;
 
 import eu.emi.security.authn.x509.NamespaceCheckingMode;
-import eu.emi.security.authn.x509.ProxySupport;
 import eu.emi.security.authn.x509.RevocationParameters;
 import eu.emi.security.authn.x509.StoreUpdateListener;
 import eu.emi.security.authn.x509.ValidationResult;
@@ -65,37 +64,37 @@ public class OpensslDirTest
 				Encoding.PEM);
 		OpensslCertChainValidator validators[] = new OpensslCertChainValidator[] {
 				new OpensslCertChainValidator(dir.toString(), false, NamespaceCheckingMode.IGNORE, DELAY, 
-					new ValidatorParams(RevocationParameters.IGNORE, ProxySupport.ALLOW), false),
+					new ValidatorParams(RevocationParameters.IGNORE), false),
 					
 				new OpensslCertChainValidator(dir.toString(), false, NamespaceCheckingMode.EUGRIDPMA, DELAY, 
-					new ValidatorParams(RevocationParameters.IGNORE, ProxySupport.ALLOW, Collections.singletonList(new MyListener(0))), false),
+					new ValidatorParams(RevocationParameters.IGNORE, Collections.singletonList(new MyListener(0))), false),
 
 				new OpensslCertChainValidator(dir.toString(), false, NamespaceCheckingMode.EUGRIDPMA_AND_GLOBUS, DELAY, 
-					new ValidatorParams(RevocationParameters.IGNORE, ProxySupport.ALLOW, Collections.singletonList(new MyListener(1))), false),
+					new ValidatorParams(RevocationParameters.IGNORE, Collections.singletonList(new MyListener(1))), false),
 				
 				new OpensslCertChainValidator(dir.toString(), false, NamespaceCheckingMode.EUGRIDPMA_AND_GLOBUS_REQUIRE, DELAY, 
-					new ValidatorParams(RevocationParameters.IGNORE, ProxySupport.ALLOW, Collections.singletonList(new MyListener(2))), false),
+					new ValidatorParams(RevocationParameters.IGNORE, Collections.singletonList(new MyListener(2))), false),
 				
 				new OpensslCertChainValidator(dir.toString(), false, NamespaceCheckingMode.EUGRIDPMA_GLOBUS, DELAY, 
-					new ValidatorParams(RevocationParameters.IGNORE, ProxySupport.ALLOW, Collections.singletonList(new MyListener(3))), false),
+					new ValidatorParams(RevocationParameters.IGNORE, Collections.singletonList(new MyListener(3))), false),
 				
 				new OpensslCertChainValidator(dir.toString(), false, NamespaceCheckingMode.EUGRIDPMA_GLOBUS_REQUIRE, DELAY, 
-					new ValidatorParams(RevocationParameters.IGNORE, ProxySupport.ALLOW, Collections.singletonList(new MyListener(4))), false),
+					new ValidatorParams(RevocationParameters.IGNORE, Collections.singletonList(new MyListener(4))), false),
 				
 				new OpensslCertChainValidator(dir.toString(), false, NamespaceCheckingMode.EUGRIDPMA_REQUIRE, DELAY, 
-					new ValidatorParams(RevocationParameters.IGNORE, ProxySupport.ALLOW, Collections.singletonList(new MyListener(5))), false),
+					new ValidatorParams(RevocationParameters.IGNORE, Collections.singletonList(new MyListener(5))), false),
 				
 				new OpensslCertChainValidator(dir.toString(), false, NamespaceCheckingMode.GLOBUS, DELAY, 
-					new ValidatorParams(RevocationParameters.IGNORE, ProxySupport.ALLOW, Collections.singletonList(new MyListener(6))), false),
+					new ValidatorParams(RevocationParameters.IGNORE, Collections.singletonList(new MyListener(6))), false),
 				
 				new OpensslCertChainValidator(dir.toString(), false, NamespaceCheckingMode.GLOBUS_EUGRIDPMA, DELAY, 
-					new ValidatorParams(RevocationParameters.IGNORE, ProxySupport.ALLOW, Collections.singletonList(new MyListener(7))), false),
+					new ValidatorParams(RevocationParameters.IGNORE, Collections.singletonList(new MyListener(7))), false),
 				
 				new OpensslCertChainValidator(dir.toString(), false, NamespaceCheckingMode.GLOBUS_EUGRIDPMA_REQUIRE, DELAY, 
-					new ValidatorParams(RevocationParameters.IGNORE, ProxySupport.ALLOW, Collections.singletonList(new MyListener(8))), false),
+					new ValidatorParams(RevocationParameters.IGNORE, Collections.singletonList(new MyListener(8))), false),
 				
 				new OpensslCertChainValidator(dir.toString(), false, NamespaceCheckingMode.GLOBUS_REQUIRE, DELAY, 
-					new ValidatorParams(RevocationParameters.IGNORE, ProxySupport.ALLOW, Collections.singletonList(new MyListener(9))), false),
+					new ValidatorParams(RevocationParameters.IGNORE, Collections.singletonList(new MyListener(9))), false),
 				};
 
 		//case: no ns declarations. 
