@@ -17,6 +17,8 @@ import java.util.List;
 import java.util.Set;
 
 import eu.emi.security.authn.x509.RevocationParameters;
+import eu.emi.security.authn.x509.CrlCheckingMode;
+import eu.emi.security.authn.x509.OCSPCheckingMode;
 import eu.emi.security.authn.x509.StoreUpdateListener;
 import eu.emi.security.authn.x509.ValidationError;
 import eu.emi.security.authn.x509.ValidationErrorCode;
@@ -52,6 +54,7 @@ public abstract class AbstractValidator implements X509CertChainValidatorExt
 	private TrustAnchorStore caStore;
 	private AbstractCRLStoreSPI crlStore;
 	protected BCCertPathValidator validator;
+	private NativeBCPKIXValidator nativeValidator;
 	private RevocationParameters revocationMode;
 	protected boolean disposed;
 	
@@ -87,6 +90,7 @@ public abstract class AbstractValidator implements X509CertChainValidatorExt
 		if (crlStore != null)
 			this.crlStore = crlStore;
 		this.validator = new BCCertPathValidator();
+		this.nativeValidator = new NativeBCPKIXValidator();
 		this.revocationMode = revocationCheckingMode;
 	}
 	
@@ -96,6 +100,8 @@ public abstract class AbstractValidator implements X509CertChainValidatorExt
 	@Override
 	public ValidationResult validate(CertPath certPath)
 	{
+		if (certPath == null)
+			throw new IllegalArgumentException("Certificate path must not be null");
 		List<? extends Certificate> certs = certPath.getCertificates();
 		X509Certificate[] certsA = new X509Certificate[certs.size()];
 		for (int i=0; i<certsA.length; i++)
@@ -107,6 +113,18 @@ public abstract class AbstractValidator implements X509CertChainValidatorExt
 						c.getClass().getName());
 			certsA[i] = (X509Certificate) c;
 		}
+		if (isNativeBaseValidation())
+		{
+			if (isDisposed())
+				throw new IllegalStateException("The validator instance was disposed");
+			try
+			{
+				return processResult(nativeValidator.validate(certPath, getTrustAnchors(certsA)));
+			} catch (CertificateException e)
+			{
+				return processInputError(certsA, e);
+			}
+		}
 		return validate(certsA);	
 	}
 
@@ -117,7 +135,12 @@ public abstract class AbstractValidator implements X509CertChainValidatorExt
 	@Override
 	public ValidationResult validate(X509Certificate[] certChain)
 	{
-		return validate(certChain, caStore.getTrustAnchors());
+		return validate(certChain, getTrustAnchors(certChain));
+	}
+
+	protected Set<TrustAnchor> getTrustAnchors(X509Certificate[] certChain)
+	{
+		return caStore.getTrustAnchors();
 	}
 
 	protected ValidationResult validate(X509Certificate[] certChain, Set<TrustAnchor> anchors)
@@ -127,16 +150,32 @@ public abstract class AbstractValidator implements X509CertChainValidatorExt
 		ValidationResult result;
 		try
 		{
-			result = validator.validate(certChain, anchors,
-					new SimpleCRLStore(crlStore), revocationMode, observers);
+			result = isNativeBaseValidation() ? nativeValidator.validate(certChain, anchors) :
+					validator.validate(certChain, anchors,
+							new SimpleCRLStore(crlStore), revocationMode, observers);
 		} catch (CertificateException e)
 		{
-			e.printStackTrace();
-			ValidationError error = new ValidationError(certChain, -1, ValidationErrorCode.inputError, 
-					e.toString());
-			result = new ValidationResult(false, Collections.singletonList(error));
+			return processInputError(certChain, e);
 		}
+		return processResult(result);
+	}
 
+	private boolean isNativeBaseValidation()
+	{
+		return revocationMode.getCrlCheckingMode() == CrlCheckingMode.IGNORE &&
+				revocationMode.getOcspParameters().getCheckingMode() ==
+					OCSPCheckingMode.IGNORE;
+	}
+
+	private ValidationResult processInputError(X509Certificate[] certChain, CertificateException e)
+	{
+		ValidationError error = new ValidationError(certChain, -1, ValidationErrorCode.inputError,
+				e.toString());
+		return processResult(new ValidationResult(false, Collections.singletonList(error)));
+	}
+
+	private ValidationResult processResult(ValidationResult result)
+	{
 		if (!result.isValid())
 		{
 			List<ValidationError> errors = result.getErrors();

@@ -8,10 +8,10 @@ package eu.emi.security.authn.x509.impl;
 import java.security.InvalidAlgorithmParameterException;
 import java.security.cert.TrustAnchor;
 import java.security.cert.X509Certificate;
+import java.util.Collections;
 import java.util.Set;
 import java.util.Timer;
 
-import eu.emi.security.authn.x509.ValidationResult;
 import eu.emi.security.authn.x509.helpers.crl.AbstractCRLStoreSPI;
 import eu.emi.security.authn.x509.helpers.crl.LazyOpensslCRLStoreSpi;
 import eu.emi.security.authn.x509.helpers.crl.OpensslCRLStoreSpi;
@@ -161,8 +161,10 @@ public class OpensslCertChainValidator extends AbstractValidator
 	 * {@inheritDoc}
 	 */
 	@Override
-	public ValidationResult validate(X509Certificate[] certChain)
+	protected Set<TrustAnchor> getTrustAnchors(X509Certificate[] certChain)
 	{
+		if (certChain == null || certChain.length == 0)
+			return Collections.emptySet();
 		Set<TrustAnchor> anchors;
 		if (lazyMode)
 		{
@@ -172,9 +174,6 @@ public class OpensslCertChainValidator extends AbstractValidator
 		{
 			anchors = trustStore.getTrustAnchors(); 
 		}
-		return super.validate(certChain, anchors);
+		return anchors;
 	}
 }
-
-
-

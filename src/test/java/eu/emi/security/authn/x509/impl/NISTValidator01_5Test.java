@@ -218,7 +218,7 @@ public class NISTValidator01_5Test extends NISTValidatorTestBase
 	@Test
 	public void test4_4_1() throws Exception
 	{
-		nistTest(1, TRUST_ANCHOR_ROOT_CERTIFICATE, 
+		nistRevocationTest(1, TRUST_ANCHOR_ROOT_CERTIFICATE,
 		                new String[] { "InvalidMissingCRLTest1EE", "NoCRLCACert"}, 
 		                new String[] { TRUST_ANCHOR_ROOT_CRL }, null);
 	}
@@ -226,7 +226,7 @@ public class NISTValidator01_5Test extends NISTValidatorTestBase
 	@Test
 	public void test4_4_2() throws Exception
 	{
-		nistTest(1, TRUST_ANCHOR_ROOT_CERTIFICATE, 
+		nistRevocationTest(1, TRUST_ANCHOR_ROOT_CERTIFICATE,
 		                new String[] { "InvalidRevokedCATest2EE", "RevokedsubCACert", GOOD_CA_CERT}, 
 		                new String[] { "RevokedsubCACRL", GOOD_CA_CRL, TRUST_ANCHOR_ROOT_CRL }, null);
 	}
@@ -234,7 +234,7 @@ public class NISTValidator01_5Test extends NISTValidatorTestBase
 	@Test
 	public void test4_4_3() throws Exception
 	{
-		nistTest(1, TRUST_ANCHOR_ROOT_CERTIFICATE, 
+		nistRevocationTest(1, TRUST_ANCHOR_ROOT_CERTIFICATE,
 		                new String[] { "InvalidRevokedEETest3EE", GOOD_CA_CERT}, 
 		                new String[] { GOOD_CA_CRL, TRUST_ANCHOR_ROOT_CRL }, null);
 	}
@@ -242,7 +242,7 @@ public class NISTValidator01_5Test extends NISTValidatorTestBase
 	@Test
 	public void test4_4_4() throws Exception
 	{
-		nistTest(1, TRUST_ANCHOR_ROOT_CERTIFICATE, 
+		nistRevocationTest(1, TRUST_ANCHOR_ROOT_CERTIFICATE,
 		                new String[] { "InvalidBadCRLSignatureTest4EE", "BadCRLSignatureCACert"}, 
 		                new String[] { "BadCRLSignatureCACRL", TRUST_ANCHOR_ROOT_CRL }, null);
 	}
@@ -250,7 +250,7 @@ public class NISTValidator01_5Test extends NISTValidatorTestBase
 	@Test
 	public void test4_4_5() throws Exception
 	{
-		nistTest(1, TRUST_ANCHOR_ROOT_CERTIFICATE, 
+		nistRevocationTest(1, TRUST_ANCHOR_ROOT_CERTIFICATE,
 		                new String[] { "InvalidBadCRLIssuerNameTest5EE", "BadCRLIssuerNameCACert"}, 
 		                new String[] { "BadCRLIssuerNameCACRL", TRUST_ANCHOR_ROOT_CRL }, null);
 	}
@@ -258,7 +258,7 @@ public class NISTValidator01_5Test extends NISTValidatorTestBase
 	@Test
 	public void test4_4_6() throws Exception
 	{
-		nistTest(1, TRUST_ANCHOR_ROOT_CERTIFICATE, 
+		nistRevocationTest(1, TRUST_ANCHOR_ROOT_CERTIFICATE,
 		                new String[] { "InvalidWrongCRLTest6EE", "WrongCRLCACert"}, 
 		                new String[] { "WrongCRLCACRL", TRUST_ANCHOR_ROOT_CRL }, null);
 	}
@@ -266,7 +266,7 @@ public class NISTValidator01_5Test extends NISTValidatorTestBase
 	@Test
 	public void test4_4_7() throws Exception
 	{
-		nistTest(0, TRUST_ANCHOR_ROOT_CERTIFICATE, 
+		nistRevocationTest(0, TRUST_ANCHOR_ROOT_CERTIFICATE,
 		                new String[] { "ValidTwoCRLsTest7EE", "TwoCRLsCACert"}, 
 		                new String[] { "TwoCRLsCAGoodCRL", "TwoCRLsCABadCRL", TRUST_ANCHOR_ROOT_CRL }, null);
 	}
@@ -274,7 +274,7 @@ public class NISTValidator01_5Test extends NISTValidatorTestBase
 	@Test
 	public void test4_4_8() throws Exception
 	{
-		nistTest(1, TRUST_ANCHOR_ROOT_CERTIFICATE, 
+		nistRevocationTest(1, TRUST_ANCHOR_ROOT_CERTIFICATE,
 		                new String[] { "InvalidUnknownCRLEntryExtensionTest8EE", "UnknownCRLEntryExtensionCACert"}, 
 		                new String[] { "UnknownCRLEntryExtensionCACRL", TRUST_ANCHOR_ROOT_CRL }, null);
 	}
@@ -282,7 +282,7 @@ public class NISTValidator01_5Test extends NISTValidatorTestBase
 	@Test
 	public void test4_4_9() throws Exception
 	{
-		nistTest(1, TRUST_ANCHOR_ROOT_CERTIFICATE, 
+		nistRevocationTest(1, TRUST_ANCHOR_ROOT_CERTIFICATE,
 		                new String[] { "InvalidUnknownCRLExtensionTest9EE", "UnknownCRLExtensionCACert"}, 
 		                new String[] { "UnknownCRLExtensionCACRL", TRUST_ANCHOR_ROOT_CRL }, null);
 	}
@@ -290,7 +290,7 @@ public class NISTValidator01_5Test extends NISTValidatorTestBase
 	@Test
 	public void test4_4_10() throws Exception
 	{
-		nistTest(1, TRUST_ANCHOR_ROOT_CERTIFICATE, 
+		nistRevocationTest(1, TRUST_ANCHOR_ROOT_CERTIFICATE,
 		                new String[] { "InvalidUnknownCRLExtensionTest10EE", "UnknownCRLExtensionCACert"}, 
 		                new String[] { "UnknownCRLExtensionCACRL", TRUST_ANCHOR_ROOT_CRL }, null);
 	}
@@ -299,7 +299,7 @@ public class NISTValidator01_5Test extends NISTValidatorTestBase
 	@Test
 	public void test4_4_11() throws Exception
 	{
-		nistTest(1, TRUST_ANCHOR_ROOT_CERTIFICATE, 
+		nistRevocationTest(1, TRUST_ANCHOR_ROOT_CERTIFICATE,
 		                new String[] { "InvalidOldCRLnextUpdateTest11EE", "OldCRLnextUpdateCACert"}, 
 		                new String[] { "OldCRLnextUpdateCACRL", TRUST_ANCHOR_ROOT_CRL }, null);
 	}
@@ -307,7 +307,7 @@ public class NISTValidator01_5Test extends NISTValidatorTestBase
 	@Test
 	public void test4_4_12() throws Exception
 	{
-		nistTest(1, TRUST_ANCHOR_ROOT_CERTIFICATE, 
+		nistRevocationTest(1, TRUST_ANCHOR_ROOT_CERTIFICATE,
 		                new String[] { "Invalidpre2000CRLnextUpdateTest12EE", "pre2000CRLnextUpdateCACert"}, 
 		                new String[] { "pre2000CRLnextUpdateCACRL", TRUST_ANCHOR_ROOT_CRL }, null);
 	}
@@ -315,7 +315,7 @@ public class NISTValidator01_5Test extends NISTValidatorTestBase
 	@Test
 	public void test4_4_13() throws Exception
 	{
-		nistTest(0, TRUST_ANCHOR_ROOT_CERTIFICATE, 
+		nistRevocationTest(0, TRUST_ANCHOR_ROOT_CERTIFICATE,
 		                new String[] { "ValidGeneralizedTimeCRLnextUpdateTest13EE", "GeneralizedTimeCRLnextUpdateCACert"}, 
 		                new String[] { "GeneralizedTimeCRLnextUpdateCACRL", TRUST_ANCHOR_ROOT_CRL }, null);
 	}
@@ -323,7 +323,7 @@ public class NISTValidator01_5Test extends NISTValidatorTestBase
 	@Test
 	public void test4_4_14() throws Exception
 	{
-		nistTest(0, TRUST_ANCHOR_ROOT_CERTIFICATE, 
+		nistRevocationTest(0, TRUST_ANCHOR_ROOT_CERTIFICATE,
 		                new String[] { "ValidNegativeSerialNumberTest14EE", "NegativeSerialNumberCACert"}, 
 		                new String[] { "NegativeSerialNumberCACRL", TRUST_ANCHOR_ROOT_CRL }, null);
 	}
@@ -331,7 +331,7 @@ public class NISTValidator01_5Test extends NISTValidatorTestBase
 	@Test
 	public void test4_4_15() throws Exception
 	{
-		nistTest(1, TRUST_ANCHOR_ROOT_CERTIFICATE, 
+		nistRevocationTest(1, TRUST_ANCHOR_ROOT_CERTIFICATE,
 		                new String[] { "InvalidNegativeSerialNumberTest15EE", "NegativeSerialNumberCACert"}, 
 		                new String[] { "NegativeSerialNumberCACRL", TRUST_ANCHOR_ROOT_CRL }, null);
 	}
@@ -339,7 +339,7 @@ public class NISTValidator01_5Test extends NISTValidatorTestBase
 	@Test
 	public void test4_4_16() throws Exception
 	{
-		nistTest(0, TRUST_ANCHOR_ROOT_CERTIFICATE, 
+		nistRevocationTest(0, TRUST_ANCHOR_ROOT_CERTIFICATE,
 		                new String[] { "ValidLongSerialNumberTest16EE", "LongSerialNumberCACert"}, 
 		                new String[] { "LongSerialNumberCACRL", TRUST_ANCHOR_ROOT_CRL }, null);
 	}
@@ -347,7 +347,7 @@ public class NISTValidator01_5Test extends NISTValidatorTestBase
 	@Test
 	public void test4_4_17() throws Exception
 	{
-		nistTest(0, TRUST_ANCHOR_ROOT_CERTIFICATE, 
+		nistRevocationTest(0, TRUST_ANCHOR_ROOT_CERTIFICATE,
 		                new String[] { "ValidLongSerialNumberTest17EE", "LongSerialNumberCACert"}, 
 		                new String[] { "LongSerialNumberCACRL", TRUST_ANCHOR_ROOT_CRL }, null);
 	}
@@ -355,7 +355,7 @@ public class NISTValidator01_5Test extends NISTValidatorTestBase
 	@Test
 	public void test4_4_18() throws Exception
 	{
-		nistTest(1, TRUST_ANCHOR_ROOT_CERTIFICATE, 
+		nistRevocationTest(1, TRUST_ANCHOR_ROOT_CERTIFICATE,
 		                new String[] { "InvalidLongSerialNumberTest18EE", "LongSerialNumberCACert"}, 
 		                new String[] { "LongSerialNumberCACRL", TRUST_ANCHOR_ROOT_CRL }, null);
 	}
@@ -363,7 +363,7 @@ public class NISTValidator01_5Test extends NISTValidatorTestBase
 	@Test
 	public void test4_4_19() throws Exception
 	{
-		nistTest(0, TRUST_ANCHOR_ROOT_CERTIFICATE, 
+		nistRevocationTest(0, TRUST_ANCHOR_ROOT_CERTIFICATE,
 		                new String[] { "ValidSeparateCertificateandCRLKeysTest19EE", 
 				"SeparateCertificateandCRLKeysCRLSigningCert", 
 				"SeparateCertificateandCRLKeysCertificateSigningCACert"}, 
@@ -375,7 +375,7 @@ public class NISTValidator01_5Test extends NISTValidatorTestBase
 	@Test
 	public void test4_4_20() throws Exception
 	{
-		nistTest(1, TRUST_ANCHOR_ROOT_CERTIFICATE, 
+		nistRevocationTest(1, TRUST_ANCHOR_ROOT_CERTIFICATE,
 		                new String[] { "InvalidSeparateCertificateandCRLKeysTest20EE", 
 				"SeparateCertificateandCRLKeysCRLSigningCert", "SeparateCertificateandCRLKeysCertificateSigningCACert"}, 
 		                new String[] { "SeparateCertificateandCRLKeysCRL", TRUST_ANCHOR_ROOT_CRL }, null);
@@ -384,7 +384,7 @@ public class NISTValidator01_5Test extends NISTValidatorTestBase
 	@Test
 	public void test4_4_21() throws Exception
 	{
-		nistTest(1, TRUST_ANCHOR_ROOT_CERTIFICATE, 
+		nistRevocationTest(1, TRUST_ANCHOR_ROOT_CERTIFICATE,
 		                new String[] { "InvalidSeparateCertificateandCRLKeysTest21EE", 
 				"SeparateCertificateandCRLKeysCA2CertificateSigningCACert",
 				"SeparateCertificateandCRLKeysCA2CRLSigningCert"}, 
@@ -403,7 +403,7 @@ public class NISTValidator01_5Test extends NISTValidatorTestBase
 	@Test
 	public void test4_5_2() throws Exception
 	{
-		nistTest(1, TRUST_ANCHOR_ROOT_CERTIFICATE, 
+		nistRevocationTest(1, TRUST_ANCHOR_ROOT_CERTIFICATE,
 		                new String[] { "InvalidBasicSelfIssuedOldWithNewTest2EE", 
 				"BasicSelfIssuedNewKeyOldWithNewCACert", "BasicSelfIssuedNewKeyCACert"}, 
 		                new String[] { "BasicSelfIssuedNewKeyCACRL", TRUST_ANCHOR_ROOT_CRL }, null);
@@ -428,7 +428,7 @@ public class NISTValidator01_5Test extends NISTValidatorTestBase
 	@Test
 	public void test4_5_5() throws Exception
 	{
-		nistTest(1, TRUST_ANCHOR_ROOT_CERTIFICATE, 
+		nistRevocationTest(1, TRUST_ANCHOR_ROOT_CERTIFICATE,
 		                new String[] { "InvalidBasicSelfIssuedNewWithOldTest5EE", "BasicSelfIssuedOldKeyNewWithOldCACert", "BasicSelfIssuedOldKeyCACert"}, 
 		                new String[] { "BasicSelfIssuedOldKeyCACRL", "BasicSelfIssuedOldKeySelfIssuedCertCRL", TRUST_ANCHOR_ROOT_CRL }, null);
 	}
@@ -444,7 +444,7 @@ public class NISTValidator01_5Test extends NISTValidatorTestBase
 	@Test
 	public void test4_5_7() throws Exception
 	{
-		nistTest(1, TRUST_ANCHOR_ROOT_CERTIFICATE, 
+		nistRevocationTest(1, TRUST_ANCHOR_ROOT_CERTIFICATE,
 		                new String[] { "InvalidBasicSelfIssuedCRLSigningKeyTest7EE", "BasicSelfIssuedCRLSigningKeyCRLCert", "BasicSelfIssuedCRLSigningKeyCACert"}, 
 		                new String[] { "BasicSelfIssuedCRLSigningKeyCRLCertCRL", "BasicSelfIssuedCRLSigningKeyCACRL", TRUST_ANCHOR_ROOT_CRL }, null);
 	}
