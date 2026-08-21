@@ -17,6 +17,8 @@ import java.util.Set;
 
 import eu.emi.security.authn.x509.CrlCheckingMode;
 import eu.emi.security.authn.x509.OCSPCheckingMode;
+import eu.emi.security.authn.x509.OCSPParametes;
+import eu.emi.security.authn.x509.OCSPResponder;
 import eu.emi.security.authn.x509.RevocationParameters;
 import eu.emi.security.authn.x509.StoreUpdateListener;
 import eu.emi.security.authn.x509.ValidationError;
@@ -44,6 +46,9 @@ import eu.emi.security.authn.x509.impl.CertificateUtils;
  */
 public abstract class AbstractValidator implements X509CertChainValidatorExt
 {
+	private static final String AUTHORITY_INFORMATION_ACCESS_OID =
+			"1.3.6.1.5.5.7.1.1";
+
 	static 
 	{
 		CertificateUtils.configureSecProvider();
@@ -137,6 +142,17 @@ public abstract class AbstractValidator implements X509CertChainValidatorExt
 				return processInputError(certsA, e);
 			}
 		}
+		if (isNativeOCSPValidation(certsA))
+		{
+			try
+			{
+				return processResult(nativeValidator.validateWithOCSP(certPath,
+						getTrustAnchors(certsA), getNativeOCSPResponder()));
+			} catch (CertificateException e)
+			{
+				return processInputError(certsA, e);
+			}
+		}
 		return validate(certsA);	
 	}
 
@@ -167,6 +183,9 @@ public abstract class AbstractValidator implements X509CertChainValidatorExt
 			else if (isNativeCRLValidation())
 				result = nativeValidator.validateWithCRLs(certChain, anchors,
 						new SimpleCRLStore(crlStore));
+			else if (isNativeOCSPValidation(certChain))
+				result = nativeValidator.validateWithOCSP(certChain, anchors,
+						getNativeOCSPResponder());
 			else
 				result = validator.validate(certChain, anchors,
 						new SimpleCRLStore(crlStore), revocationMode, observers);
@@ -189,6 +208,40 @@ public abstract class AbstractValidator implements X509CertChainValidatorExt
 		return revocationMode.getCrlCheckingMode() == CrlCheckingMode.REQUIRE &&
 				revocationMode.getOcspParameters().getCheckingMode() ==
 					OCSPCheckingMode.IGNORE;
+	}
+
+	private boolean isNativeOCSPValidation(X509Certificate[] certificates)
+	{
+		if (revocationMode.getCrlCheckingMode() != CrlCheckingMode.IGNORE)
+			return false;
+		OCSPParametes parameters = revocationMode.getOcspParameters();
+		if (parameters == null || parameters.getCheckingMode() != OCSPCheckingMode.REQUIRE)
+			return false;
+		OCSPResponder[] responders = parameters.getLocalResponders();
+		return !hasAuthorityInformationAccess(certificates) &&
+				responders != null && responders.length == 1 &&
+				responders[0] != null && responders[0].getAddress() != null &&
+				responders[0].getCertificate() != null &&
+				parameters.getConntectTimeout() == OCSPParametes.DEFAULT_TIMEOUT &&
+				parameters.isPreferLocalResponders() && !parameters.isUseNonce() &&
+				parameters.getCacheTtl() == OCSPParametes.DEFAULT_CACHE &&
+				parameters.getDiskCachePath() == null;
+	}
+
+	private boolean hasAuthorityInformationAccess(X509Certificate[] certificates)
+	{
+		if (certificates == null)
+			return false;
+		for (X509Certificate certificate: certificates)
+			if (certificate != null && certificate.getExtensionValue(
+					AUTHORITY_INFORMATION_ACCESS_OID) != null)
+				return true;
+		return false;
+	}
+
+	private OCSPResponder getNativeOCSPResponder()
+	{
+		return revocationMode.getOcspParameters().getLocalResponders()[0];
 	}
 
 	private ValidationResult processInputError(X509Certificate[] certChain, Throwable failure)

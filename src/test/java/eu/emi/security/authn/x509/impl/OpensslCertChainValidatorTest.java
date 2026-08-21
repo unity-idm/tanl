@@ -31,6 +31,8 @@ import java.io.File;
 import java.io.IOException;
 import java.io.StringWriter;
 import java.math.BigInteger;
+import java.net.InetSocketAddress;
+import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -61,6 +63,8 @@ import java.util.concurrent.ThreadLocalRandom;
 
 import javax.security.auth.x500.X500Principal;
 
+import com.sun.net.httpserver.HttpServer;
+
 import org.bouncycastle.asn1.ASN1ObjectIdentifier;
 import org.bouncycastle.asn1.x500.X500Name;
 import org.bouncycastle.asn1.x509.BasicConstraints;
@@ -82,6 +86,7 @@ import org.junit.Test;
 import eu.emi.security.authn.x509.CrlCheckingMode;
 import eu.emi.security.authn.x509.OCSPCheckingMode;
 import eu.emi.security.authn.x509.OCSPParametes;
+import eu.emi.security.authn.x509.OCSPResponder;
 import eu.emi.security.authn.x509.RevocationParameters;
 import eu.emi.security.authn.x509.StoreUpdateListener;
 import eu.emi.security.authn.x509.ValidationErrorCode;
@@ -100,10 +105,12 @@ public class OpensslCertChainValidatorTest
 {
 	private OpensslCertChainValidator validator;
 	private Path trustStore;
+	private HttpServer ocspServer;
 
 	@Before
 	public void setup() throws IOException {
 		validator = null;
+		ocspServer = null;
 		trustStore = Paths.get("target/openssl-trust-stores/" +
 				ThreadLocalRandom.current().nextLong(0, Long.MAX_VALUE));
 		Files.createDirectories(trustStore);
@@ -111,6 +118,9 @@ public class OpensslCertChainValidatorTest
 
 	@After
 	public void tearDown() throws IOException {
+		if (ocspServer != null) {
+			ocspServer.stop(0);
+		}
 		if (Files.exists(trustStore)) {
 			Files.walk(trustStore)
 			.sorted(Comparator.reverseOrder())
@@ -354,6 +364,84 @@ public class OpensslCertChainValidatorTest
 		assertThat(loadingFailures.size(), is(1));
 	}
 
+	@Test
+	public void shouldUseNativeValidationForOneConfiguredRequiredOCSPResponder()
+			throws Exception {
+		CA rootCA = given(aCertificateAuthority()
+				.selfSigned()
+				.withName("DC=org, DC=example, CN=native OCSP root CA"));
+		given(anOpensslTrustStore().trustingCA(rootCA));
+		OCSPResponder malformedResponder = startMalformedOCSPResponder(
+				rootCA.getCertificate());
+
+		given(anOpensslCertChainValidator()
+				.with(OCSPCheckingMode.REQUIRE)
+				.with(malformedResponder)
+				.with(CrlCheckingMode.IGNORE)
+				.withUpdateInterval(of(2, MINUTES))
+				.withLazyLoading());
+		X509Certificate serviceCertificate = given(anEEC()
+				.withSubject("DC=org, DC=example, CN=native OCSP host")
+				.signedBy(rootCA));
+
+		ValidationResult result = whenValidating(serviceCertificate);
+
+		assertThat(result.isValid(), is(false));
+		assertThat(result.getPrimaryError().getErrorCode(),
+				is(ValidationErrorCode.PKIX_FAILURE));
+		assertThat(result.getPrimaryError().getStage(),
+				is(ValidationStage.REVOCATION));
+	}
+
+	@Test
+	public void shouldKeepNonceOCSPOnCompatibilityPath() throws Exception {
+		CA rootCA = given(aCertificateAuthority()
+				.selfSigned()
+				.withName("DC=org, DC=example, CN=nonce OCSP root CA"));
+		given(anOpensslTrustStore().trustingCA(rootCA));
+		OCSPResponder malformedResponder = startMalformedOCSPResponder(
+				rootCA.getCertificate());
+
+		given(anOpensslCertChainValidator()
+				.with(OCSPCheckingMode.REQUIRE)
+				.with(malformedResponder)
+				.withNonce()
+				.with(CrlCheckingMode.IGNORE)
+				.withUpdateInterval(of(2, MINUTES))
+				.withLazyLoading());
+		X509Certificate serviceCertificate = given(anEEC()
+				.withSubject("DC=org, DC=example, CN=nonce OCSP host")
+				.signedBy(rootCA));
+
+		ValidationResult result = whenValidating(serviceCertificate);
+
+		assertThat(result.isValid(), is(false));
+		assertThat(result.getPrimaryError().getErrorCode(),
+				is(ValidationErrorCode.ocspResponderQueryError));
+	}
+
+	private OCSPResponder startMalformedOCSPResponder(X509Certificate certificate)
+			throws IOException {
+		final byte[] malformedResponse = {1, 2, 3, 4};
+		ocspServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+		ocspServer.createContext("/", exchange -> {
+			try {
+				while (exchange.getRequestBody().read() >= 0) {
+					// Consume the complete OCSP request before responding.
+				}
+				exchange.getResponseHeaders().set("Content-Type", "application/ocsp-response");
+				exchange.sendResponseHeaders(200, malformedResponse.length);
+				exchange.getResponseBody().write(malformedResponse);
+			} finally {
+				exchange.close();
+			}
+		});
+		ocspServer.start();
+		URL address = new URL("http://127.0.0.1:" +
+				ocspServer.getAddress().getPort() + "/");
+		return new OCSPResponder(address, certificate);
+	}
+
 	private ValidationResult whenValidating(X509Certificate... certificates) {
 		return validator.validate(certificates);
 	}
@@ -434,13 +522,25 @@ public class OpensslCertChainValidatorTest
 	 */
 	private class OpensslCertChainValidatorBuilder {
 		private OCSPCheckingMode ocspMode;
+		private OCSPResponder ocspResponder;
 		private CrlCheckingMode crlCheckingMode;
 		private Duration updateInterval;
 		private final List<StoreUpdateListener> listeners = new ArrayList<>();
 		private boolean isLazy;
+		private boolean useNonce;
 
 		public OpensslCertChainValidatorBuilder with(OCSPCheckingMode mode) {
 			ocspMode = requireNonNull(mode);
+			return this;
+		}
+
+		public OpensslCertChainValidatorBuilder with(OCSPResponder responder) {
+			ocspResponder = requireNonNull(responder);
+			return this;
+		}
+
+		public OpensslCertChainValidatorBuilder withNonce() {
+			useNonce = true;
 			return this;
 		}
 
@@ -474,7 +574,10 @@ public class OpensslCertChainValidatorTest
 			assertThat(crlCheckingMode, not(nullValue()));
 			assertThat(updateInterval, not(nullValue()));
 
-			OCSPParametes ocspParameters = new OCSPParametes(ocspMode);
+			OCSPParametes ocspParameters = ocspResponder == null ?
+					new OCSPParametes(ocspMode) :
+					new OCSPParametes(ocspMode, ocspResponder);
+			ocspParameters.setUseNonce(useNonce);
 			RevocationParameters revocationParams =
 					new RevocationParameters(crlCheckingMode, ocspParameters);
 			ValidatorParams validatorParams = new ValidatorParams(revocationParams, listeners);
