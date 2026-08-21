@@ -92,7 +92,7 @@ public abstract class AbstractValidator implements X509CertChainValidatorExt
 		if (crlStore != null)
 			this.crlStore = crlStore;
 		this.validator = new BCCertPathValidator();
-		this.nativeValidator = new NativeBCPKIXValidator();
+		this.nativeValidator = new NativeBCPKIXValidator(observers);
 		this.revocationMode = revocationCheckingMode;
 	}
 	

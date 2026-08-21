@@ -93,6 +93,7 @@ import eu.emi.security.authn.x509.OCSPParametes;
 import eu.emi.security.authn.x509.OCSPResponder;
 import eu.emi.security.authn.x509.RevocationParameters;
 import eu.emi.security.authn.x509.StoreUpdateListener;
+import eu.emi.security.authn.x509.StoreUpdateListener.Severity;
 import eu.emi.security.authn.x509.ValidationErrorCode;
 import eu.emi.security.authn.x509.ValidationResult;
 import eu.emi.security.authn.x509.ValidationStage;
@@ -395,6 +396,48 @@ public class OpensslCertChainValidatorTest
 				is(ValidationErrorCode.PKIX_FAILURE));
 		assertThat(result.getPrimaryError().getStage(),
 				is(ValidationStage.REVOCATION));
+	}
+
+	@Test
+	public void shouldReportNativeOCSPResponseLoadingFailure() throws Exception {
+		CA rootCA = given(aCertificateAuthority()
+				.selfSigned()
+				.withName("DC=org, DC=example, CN=notified OCSP root CA"));
+		given(anOpensslTrustStore().trustingCA(rootCA));
+		OCSPResponder malformedResponder = startMalformedOCSPResponder(
+				rootCA.getCertificate());
+		final List<String> locations = new ArrayList<>();
+		final List<Exception> failures = new ArrayList<>();
+
+		given(anOpensslCertChainValidator()
+				.with(OCSPCheckingMode.REQUIRE)
+				.with(malformedResponder)
+				.with(CrlCheckingMode.IGNORE)
+				.withUpdateInterval(of(2, MINUTES))
+				.withLazyLoading());
+		validator.addUpdateListener(new StoreUpdateListener() {
+			@Override
+			public void loadingNotification(String location, String type,
+					Severity level, Exception cause) {
+				if (StoreUpdateListener.OCSP.equals(type) &&
+						level == Severity.WARNING) {
+					locations.add(location);
+					failures.add(cause);
+				}
+			}
+		});
+		X509Certificate serviceCertificate = given(anEEC()
+				.withSubject("DC=org, DC=example, CN=notified OCSP host")
+				.signedBy(rootCA));
+
+		ValidationResult result = whenValidating(serviceCertificate);
+
+		assertThat(result.isValid(), is(false));
+		assertThat(locations.size(), is(1));
+		assertThat(locations.get(0),
+				is(malformedResponder.getAddress().toExternalForm()));
+		assertThat(failures.size(), is(1));
+		assertThat(failures.get(0), not(nullValue()));
 	}
 
 	@Test
