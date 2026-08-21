@@ -94,6 +94,12 @@ Non-maven users must ensure that all 'compile' dependencies of this library are 
 (and very short) list of dependencies is available in the project's +pom.xml+. Runtime dependencies
 are the entries whose scope is not +test+.
 
+Applications moving from the compatibility validator should also read
++docs/migration-guide.md+ in the source repository. It contains current
+examples for validator construction, CRL and OCSP selection, stable error
+handling, and the modern OpenSSL trust-store layout. The exhaustive removed
+symbol list is in +API-Changes.txt+.
+
 Note on usage of string representation of Distinguished Names
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
