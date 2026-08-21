@@ -398,7 +398,7 @@ public class OpensslCertChainValidatorTest
 	}
 
 	@Test
-	public void shouldKeepNonceOCSPOnCompatibilityPath() throws Exception {
+	public void shouldUseNativeNonceOCSPValidation() throws Exception {
 		CA rootCA = given(aCertificateAuthority()
 				.selfSigned()
 				.withName("DC=org, DC=example, CN=nonce OCSP root CA"));
@@ -421,7 +421,9 @@ public class OpensslCertChainValidatorTest
 
 		assertThat(result.isValid(), is(false));
 		assertThat(result.getPrimaryError().getErrorCode(),
-				is(ValidationErrorCode.ocspResponderQueryError));
+				is(ValidationErrorCode.PKIX_FAILURE));
+		assertThat(result.getPrimaryError().getStage(),
+				is(ValidationStage.REVOCATION));
 	}
 
 	@Test
@@ -517,7 +519,7 @@ public class OpensslCertChainValidatorTest
 	}
 
 	@Test
-	public void shouldUseNativeValidationForOneDiscoveredRequiredOCSPResponder()
+	public void shouldUseNativeNonceValidationForOneDiscoveredOCSPResponder()
 			throws Exception {
 		CA rootCA = given(aCertificateAuthority()
 				.selfSigned()
@@ -527,6 +529,7 @@ public class OpensslCertChainValidatorTest
 
 		given(anOpensslCertChainValidator()
 				.with(OCSPCheckingMode.REQUIRE)
+				.withNonce()
 				.with(CrlCheckingMode.IGNORE)
 				.withUpdateInterval(of(2, MINUTES))
 				.withLazyLoading());

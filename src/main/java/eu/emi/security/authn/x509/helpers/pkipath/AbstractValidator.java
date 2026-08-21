@@ -221,7 +221,7 @@ public abstract class AbstractValidator implements X509CertChainValidatorExt
 			return false;
 		OCSPResponder[] responders = parameters.getLocalResponders();
 		if (responders == null || responders.length > 1 ||
-				!parameters.isPreferLocalResponders() || parameters.isUseNonce() ||
+				!parameters.isPreferLocalResponders() ||
 				!hasSupportedOCSPTransport(parameters))
 			return false;
 		if (responders.length == 0)
@@ -296,10 +296,11 @@ public abstract class AbstractValidator implements X509CertChainValidatorExt
 	{
 		if (usesDiscoveredOCSPResponders())
 			return nativeValidator.validateWithOCSPFromAIA(certificates, anchors,
-					getOCSPTimeout(), getOCSPCacheTtl(), getOCSPDiskCachePath());
+					getOCSPTimeout(), getOCSPCacheTtl(), getOCSPDiskCachePath(),
+					usesOCSPNonce());
 		return nativeValidator.validateWithOCSP(certificates, anchors,
 				getNativeOCSPResponder(), getOCSPTimeout(), getOCSPCacheTtl(),
-				getOCSPDiskCachePath());
+				getOCSPDiskCachePath(), usesOCSPNonce());
 	}
 
 	private ValidationResult validateNativeOCSP(CertPath path,
@@ -307,10 +308,11 @@ public abstract class AbstractValidator implements X509CertChainValidatorExt
 	{
 		if (usesDiscoveredOCSPResponders())
 			return nativeValidator.validateWithOCSPFromAIA(path, anchors,
-					getOCSPTimeout(), getOCSPCacheTtl(), getOCSPDiskCachePath());
+					getOCSPTimeout(), getOCSPCacheTtl(), getOCSPDiskCachePath(),
+					usesOCSPNonce());
 		return nativeValidator.validateWithOCSP(path, anchors,
 				getNativeOCSPResponder(), getOCSPTimeout(), getOCSPCacheTtl(),
-				getOCSPDiskCachePath());
+				getOCSPDiskCachePath(), usesOCSPNonce());
 	}
 
 	private int getOCSPTimeout()
@@ -326,6 +328,11 @@ public abstract class AbstractValidator implements X509CertChainValidatorExt
 	private String getOCSPDiskCachePath()
 	{
 		return revocationMode.getOcspParameters().getDiskCachePath();
+	}
+
+	private boolean usesOCSPNonce()
+	{
+		return revocationMode.getOcspParameters().isUseNonce();
 	}
 
 	private boolean usesDiscoveredOCSPResponders()
