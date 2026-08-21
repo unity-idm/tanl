@@ -1,3 +1,30 @@
+NEXT MAJOR VERSION - LITE PKI VALIDATION
+
+This release is deliberately source- and binary-incompatible with 2.x. The
+behavioral contract and migration rules are in
+docs/changes/0003-lite-pki-contract.md.
+
+Planned removals include all proxy-certificate APIs, namespace-policy APIs,
+legacy OpenSSL subject hashes, and the detailed copied-reviewer validation
+error catalogue. Validator constructors and parameter objects will no longer
+accept proxy or namespace settings.
+
+Certificate-array validation treats the first certificate as the target and
+the rest as path-building candidates. Successful results contain the resolved
+chain and selected trust anchor. Invalid results report one primary native-PKIX
+failure with its cause, stage, and certificate position. Error listeners can
+observe failures but can no longer suppress them.
+
+OCSP remains supported. Core native OCSP and CRL modes are migrated first;
+responder configuration, ordering, nonce, and cache behavior follow in
+separately reviewed changes. No OCSP capability is removed silently.
+
+The exact removed and replacement Java symbols will be appended by the PR that
+changes each part of the API.
+
+
+2.x HISTORICAL CHANGES
+
 1) changed semantics of the DN compare methods operating on the string representation.
 2) changed ParseException to (runtime) IllegalArgumentException in X500NameUtils. 
 3) changed slightly X500NameUtils.getAttributeValues description 
@@ -44,4 +71,3 @@ two trusted v1 certificates with the same subject but different keys) is not sup
 
 - Known issue: due to bug in BC (http://www.bouncycastle.org/jira/browse/BJA-370) only masks
 8, 16, 24 and 32 are working correctly in Proxy certificate target/source restrictions.
-

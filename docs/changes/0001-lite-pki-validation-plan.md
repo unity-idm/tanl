@@ -19,6 +19,7 @@ Native Bouncy Castle `CertPathBuilder` and `CertPathValidator` are to be the val
 - Treat the first certificate in an array as the target and the remainder as path-building candidates.
 - Accept an exact trusted self-signed input and keep trust anchors outside PKIX path validation.
 - Use native revocation behavior for the modes that BC represents accurately. Do not emulate optional behavior through exception-message matching.
+- Retain OCSP validation. Migrate its core validation to native BC first, then preserve responder configuration, fallback and ordering, caching, and nonce behavior in separately reviewed layers wherever each feature can be implemented precisely and tested deterministically.
 - Remove residual gLite/Grid compatibility utilities, test corpora, documentation, and obsolete build metadata while preserving required attribution for retained derived code.
 
 ## Sequence
@@ -78,9 +79,10 @@ Exit condition: invalid TLS and direct-validation calls provide an actionable pr
 ### 6. Implement the retained native revocation modes
 
 - Implement revocation-disabled and strict native CRL behavior.
-- If OCSP is retained, expose only behavior that maps clearly to native BC, such as required OCSP or native preferred-mechanism fallback.
-- Remove custom responder ordering, cache, nonce, and multi-mechanism semantics unless they are separately justified and tested.
-- Add focused tests for missing, expired, malformed, badly signed, and revoking CRLs, plus equivalent OCSP outcomes for any retained OCSP modes.
+- Implement required OCSP and native preferred-mechanism fallback.
+- Preserve certificate AIA responder discovery and explicitly configured responders.
+- Migrate responder ordering, cache, nonce, and multi-mechanism semantics in separate changes. Retain each behavior that can be specified precisely and tested without replacing native BC as the validation authority.
+- Add focused tests for missing, expired, malformed, badly signed, and revoking CRLs, plus equivalent OCSP outcomes.
 
 Exit condition: every advertised revocation mode has precise tests and no mode claims optional/soft-fail semantics that BC does not actually provide.
 
