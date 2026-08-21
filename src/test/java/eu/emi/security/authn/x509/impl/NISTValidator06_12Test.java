@@ -180,7 +180,7 @@ public class NISTValidator06_12Test extends NISTValidatorTestBase
 	@Test
 	public void test4_7_4() throws Exception
 	{
-		nistTest(1, TRUST_ANCHOR_ROOT_CERTIFICATE, 
+		nistRevocationTest(1, TRUST_ANCHOR_ROOT_CERTIFICATE,
 		                new String[] { "InvalidkeyUsageCriticalcRLSignFalseTest4EE", "keyUsageCriticalcRLSignFalseCACert"}, 
 		                new String[] { "keyUsageCriticalcRLSignFalseCACRL", TRUST_ANCHOR_ROOT_CRL }, null);
 	}	
@@ -188,7 +188,7 @@ public class NISTValidator06_12Test extends NISTValidatorTestBase
 	@Test
 	public void test4_7_5() throws Exception
 	{
-		nistTest(1, TRUST_ANCHOR_ROOT_CERTIFICATE, 
+		nistRevocationTest(1, TRUST_ANCHOR_ROOT_CERTIFICATE,
 		                new String[] { "InvalidkeyUsageNotCriticalcRLSignFalseTest5EE", "keyUsageNotCriticalcRLSignFalseCACert"}, 
 		                new String[] { "keyUsageNotCriticalcRLSignFalseCACRL", TRUST_ANCHOR_ROOT_CRL }, null);
 	}	

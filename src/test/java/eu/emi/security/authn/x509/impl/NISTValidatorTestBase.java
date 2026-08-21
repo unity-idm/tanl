@@ -67,9 +67,22 @@ public abstract class NISTValidatorTestBase extends ValidatorTestBase
 		X509Certificate[] toCheck = new X509Certificate[chain.length];
 		for (int i=0; i<chain.length; i++)
 			toCheck[i] = loadCert("src/test/resources/NIST/certs/" + chain[i] + ".crt");
+		doPathVerdictTest(expectedErrors == 0,
+				"src/test/resources/NIST/certs/", new String[]{trustedName}, ".crt",
+				"src/test/resources/NIST/crls/", crlNames, ".crl",
+				toCheck, CrlCheckingMode.IGNORE, ocspParams);
+	}
+
+	protected void nistRevocationTest(int expectedErrors, String trustedName,
+			String[] chain, String[] crlNames, Set<String> policies) throws Exception
+	{
+		X509Certificate[] toCheck = new X509Certificate[chain.length];
+		for (int i=0; i<chain.length; i++)
+			toCheck[i] = loadCert("src/test/resources/NIST/certs/" + chain[i] + ".crt");
 		doPathTest(expectedErrors,
 				"src/test/resources/NIST/certs/", new String[]{trustedName}, ".crt",
 				"src/test/resources/NIST/crls/", crlNames, ".crl",
-				toCheck, policies, CrlCheckingMode.REQUIRE, ocspParams);
+				toCheck, policies, CrlCheckingMode.REQUIRE,
+				new OCSPParametes(OCSPCheckingMode.IGNORE));
 	}
 }
