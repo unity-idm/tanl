@@ -18,12 +18,17 @@ import java.io.FileInputStream;
 import java.security.cert.CertPath;
 import java.security.cert.CertPathBuilderException;
 import java.security.cert.CertPathValidatorException;
+import java.security.cert.CertStore;
 import java.security.cert.CertificateFactory;
+import java.security.cert.CollectionCertStoreParameters;
 import java.security.cert.TrustAnchor;
+import java.security.cert.X509CRL;
 import java.security.cert.X509Certificate;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
@@ -247,6 +252,94 @@ public class NativeBCPKIXValidatorTest
 		assertTrue(result.getPrimaryError().getCause() instanceof CertPathBuilderException);
 	}
 
+	@Test
+	public void shouldValidateWithStrictNativeCRLs() throws Exception
+	{
+		CertStore crls = crlStore("GoodCACRL", "TrustAnchorRootCRL");
+		ValidationResult result = validator.validateWithCRLs(new X509Certificate[] {
+				target, intermediate, root}, anchors,
+				crls);
+		ValidationResult asserted = validator.validateWithCRLs(
+				path(target, intermediate, root), anchors, crls);
+
+		assertTrue(result.toString(), result.isValid());
+		assertTrue(asserted.toString(), asserted.isValid());
+		assertThat(result.getValidChain(), contains(target, intermediate, root));
+		assertThat(asserted.getValidChain(), contains(target, intermediate, root));
+	}
+
+	@Test
+	public void shouldReportRevokedCertificateFromNativeCRLValidation() throws Exception
+	{
+		X509Certificate revoked = load("InvalidRevokedEETest3EE");
+
+		ValidationResult result = validator.validateWithCRLs(new X509Certificate[] {
+				revoked, intermediate, root}, anchors,
+				crlStore("GoodCACRL", "TrustAnchorRootCRL"));
+
+		assertFalse(result.toString(), result.isValid());
+		ValidationError error = result.getPrimaryError();
+		assertThat(error.getErrorCode(), is(ValidationErrorCode.PKIX_FAILURE));
+		assertThat(error.getStage(), is(ValidationStage.REVOCATION));
+		assertThat(error.getPosition(), is(0));
+		assertSame(revoked, error.getCertificate());
+		assertTrue(error.getCause() instanceof CertPathValidatorException);
+		assertNotNull(error.getProviderMessage());
+	}
+
+	@Test
+	public void shouldRejectMissingCRLInStrictMode() throws Exception
+	{
+		ValidationResult result = validator.validateWithCRLs(new X509Certificate[] {
+				target, intermediate, root}, anchors, crlStore());
+
+		assertFalse(result.toString(), result.isValid());
+		ValidationError error = result.getPrimaryError();
+		assertThat(error.getErrorCode(), is(ValidationErrorCode.PKIX_FAILURE));
+		assertThat(error.getStage(), is(ValidationStage.REVOCATION));
+		assertThat(error.getPosition(), is(1));
+		assertTrue(error.getCause() instanceof CertPathValidatorException);
+		assertNotNull(error.getProviderMessage());
+	}
+
+	@Test
+	public void shouldRejectExpiredCRLInStrictMode() throws Exception
+	{
+		X509Certificate expiredCrlTarget = load("InvalidOldCRLnextUpdateTest11EE");
+		X509Certificate expiredCrlIssuer = load("OldCRLnextUpdateCACert");
+
+		ValidationResult result = validator.validateWithCRLs(new X509Certificate[] {
+				expiredCrlTarget, expiredCrlIssuer, root}, anchors,
+				crlStore("OldCRLnextUpdateCACRL", "TrustAnchorRootCRL"));
+
+		assertFalse(result.toString(), result.isValid());
+		ValidationError error = result.getPrimaryError();
+		assertThat(error.getErrorCode(), is(ValidationErrorCode.PKIX_FAILURE));
+		assertThat(error.getStage(), is(ValidationStage.REVOCATION));
+		assertThat(error.getPosition(), is(0));
+		assertTrue(error.getCause() instanceof CertPathValidatorException);
+		assertNotNull(error.getProviderMessage());
+	}
+
+	@Test
+	public void shouldRejectBadlySignedCRLInStrictMode() throws Exception
+	{
+		X509Certificate targetWithBadCrl = load("InvalidBadCRLSignatureTest4EE");
+		X509Certificate issuerWithBadCrl = load("BadCRLSignatureCACert");
+
+		ValidationResult result = validator.validateWithCRLs(new X509Certificate[] {
+				targetWithBadCrl, issuerWithBadCrl, root}, anchors,
+				crlStore("BadCRLSignatureCACRL", "TrustAnchorRootCRL"));
+
+		assertFalse(result.toString(), result.isValid());
+		ValidationError error = result.getPrimaryError();
+		assertThat(error.getErrorCode(), is(ValidationErrorCode.PKIX_FAILURE));
+		assertThat(error.getStage(), is(ValidationStage.REVOCATION));
+		assertThat(error.getPosition(), is(0));
+		assertTrue(error.getCause() instanceof CertPathValidatorException);
+		assertNotNull(error.getProviderMessage());
+	}
+
 	private CertPath path(X509Certificate... certificates) throws Exception
 	{
 		return CertificateFactory.getInstance("X.509", BouncyCastleProvider.PROVIDER_NAME)
@@ -261,4 +354,22 @@ public class NativeBCPKIXValidatorTest
 			return CertificateUtils.loadCertificate(input, Encoding.DER);
 		}
 	}
+
+	private CertStore crlStore(String... names) throws Exception
+	{
+		List<X509CRL> crls = new ArrayList<X509CRL>();
+		for (String name: names)
+		{
+			try (FileInputStream input = new FileInputStream(
+					"src/test/resources/NIST/crls/" + name + ".crl"))
+			{
+				crls.add((X509CRL) CertificateFactory.getInstance("X.509",
+						BouncyCastleProvider.PROVIDER_NAME).generateCRL(input));
+			}
+		}
+		return CertStore.getInstance("Collection",
+				new CollectionCertStoreParameters(crls),
+				BouncyCastleProvider.PROVIDER_NAME);
+	}
+
 }

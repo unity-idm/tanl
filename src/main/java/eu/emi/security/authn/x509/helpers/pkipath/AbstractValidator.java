@@ -126,6 +126,17 @@ public abstract class AbstractValidator implements X509CertChainValidatorExt
 				return processInputError(certsA, e);
 			}
 		}
+		if (isNativeCRLValidation())
+		{
+			try
+			{
+				return processResult(nativeValidator.validateWithCRLs(certPath,
+						getTrustAnchors(certsA), new SimpleCRLStore(crlStore)));
+			} catch (CertificateException e)
+			{
+				return processInputError(certsA, e);
+			}
+		}
 		return validate(certsA);	
 	}
 
@@ -151,9 +162,14 @@ public abstract class AbstractValidator implements X509CertChainValidatorExt
 		ValidationResult result;
 		try
 		{
-			result = isNativeBaseValidation() ? nativeValidator.validate(certChain, anchors) :
-					validator.validate(certChain, anchors,
-							new SimpleCRLStore(crlStore), revocationMode, observers);
+			if (isNativeBaseValidation())
+				result = nativeValidator.validate(certChain, anchors);
+			else if (isNativeCRLValidation())
+				result = nativeValidator.validateWithCRLs(certChain, anchors,
+						new SimpleCRLStore(crlStore));
+			else
+				result = validator.validate(certChain, anchors,
+						new SimpleCRLStore(crlStore), revocationMode, observers);
 		} catch (CertificateException e)
 		{
 			return processInputError(certChain, e);
@@ -164,6 +180,13 @@ public abstract class AbstractValidator implements X509CertChainValidatorExt
 	private boolean isNativeBaseValidation()
 	{
 		return revocationMode.getCrlCheckingMode() == CrlCheckingMode.IGNORE &&
+				revocationMode.getOcspParameters().getCheckingMode() ==
+					OCSPCheckingMode.IGNORE;
+	}
+
+	private boolean isNativeCRLValidation()
+	{
+		return revocationMode.getCrlCheckingMode() == CrlCheckingMode.REQUIRE &&
 				revocationMode.getOcspParameters().getCheckingMode() ==
 					OCSPCheckingMode.IGNORE;
 	}

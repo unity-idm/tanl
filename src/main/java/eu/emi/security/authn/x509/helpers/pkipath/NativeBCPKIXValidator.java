@@ -35,6 +35,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+import org.bouncycastle.jcajce.PKIXExtendedParameters;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 
 import eu.emi.security.authn.x509.ValidationError;
@@ -44,9 +45,9 @@ import eu.emi.security.authn.x509.ValidationStage;
 import eu.emi.security.authn.x509.impl.CertificateUtils;
 
 /**
- * Native Bouncy Castle PKIX path builder and validator used for base
- * certificate validation. Revocation is deliberately disabled here; native
- * revocation configuration is layered on separately.
+ * Native Bouncy Castle PKIX path builder and validator. Base validation and
+ * strict CRL validation are kept as separate passes so failures have an
+ * unambiguous validation stage.
  */
 final class NativeBCPKIXValidator
 {
@@ -64,6 +65,26 @@ final class NativeBCPKIXValidator
 	 * certificates as unordered candidates, then validates the selected path.
 	 */
 	ValidationResult validate(X509Certificate[] input, Set<TrustAnchor> configuredAnchors)
+			throws CertificateException
+	{
+		return validate(input, configuredAnchors, null);
+	}
+
+	/**
+	 * Builds and validates a path, then performs strict native CRL checking on
+	 * every non-anchor certificate in the selected path.
+	 */
+	ValidationResult validateWithCRLs(X509Certificate[] input,
+			Set<TrustAnchor> configuredAnchors, CertStore crlStore)
+			throws CertificateException
+	{
+		if (crlStore == null)
+			return invalidInput(input, -1, "CRL store must not be null");
+		return validate(input, configuredAnchors, crlStore);
+	}
+
+	private ValidationResult validate(X509Certificate[] input,
+			Set<TrustAnchor> configuredAnchors, CertStore crlStore)
 			throws CertificateException
 	{
 		ValidationResult inputFailure = checkInput(input);
@@ -91,7 +112,8 @@ final class NativeBCPKIXValidator
 			// CertPathBuilder performs validation itself. Validate once more with
 			// the selected anchor so both native entry points remain explicit.
 			return validatePath(built.getCertPath(),
-					Collections.singleton(built.getTrustAnchor()));
+					Collections.singleton(built.getTrustAnchor()), crlStore,
+					collectionStore(Arrays.asList(input)));
 		} catch (CertPathBuilderException e)
 		{
 			List<X509Certificate> asserted = normalize(Arrays.asList(input), anchors);
@@ -99,7 +121,8 @@ final class NativeBCPKIXValidator
 				return invalid(input, -1, ValidationErrorCode.PATH_BUILDING_FAILED,
 						ValidationStage.PATH_BUILDING, e);
 			if (isCoherent(asserted))
-				return validatePath(toCertPath(asserted), anchors);
+				return validatePath(toCertPath(asserted), anchors, crlStore,
+						collectionStore(Arrays.asList(input)));
 			return invalid(input, -1, ValidationErrorCode.PATH_BUILDING_FAILED,
 					ValidationStage.PATH_BUILDING, e);
 		} catch (InvalidAlgorithmParameterException e)
@@ -114,6 +137,25 @@ final class NativeBCPKIXValidator
 	 * validator.
 	 */
 	ValidationResult validate(CertPath suppliedPath, Set<TrustAnchor> configuredAnchors)
+			throws CertificateException
+	{
+		return validate(suppliedPath, configuredAnchors, null);
+	}
+
+	/**
+	 * Validates an asserted path with strict native CRL checking.
+	 */
+	ValidationResult validateWithCRLs(CertPath suppliedPath,
+			Set<TrustAnchor> configuredAnchors, CertStore crlStore)
+			throws CertificateException
+	{
+		if (crlStore == null)
+			return invalidInput(null, -1, "CRL store must not be null");
+		return validate(suppliedPath, configuredAnchors, crlStore);
+	}
+
+	private ValidationResult validate(CertPath suppliedPath,
+			Set<TrustAnchor> configuredAnchors, CertStore crlStore)
 			throws CertificateException
 	{
 		if (suppliedPath == null)
@@ -143,7 +185,8 @@ final class NativeBCPKIXValidator
 				return valid(Collections.singletonList(target));
 			return noTrustAnchor(diagnosticChain, ValidationStage.PATH_VALIDATION);
 		}
-		return validatePath(toCertPath(normalized), anchors);
+		return validatePath(toCertPath(normalized), anchors, crlStore,
+				collectionStore(supplied));
 	}
 
 	private PKIXCertPathBuilderResult build(X509Certificate[] input, Set<TrustAnchor> anchors)
@@ -158,19 +201,19 @@ final class NativeBCPKIXValidator
 		return (PKIXCertPathBuilderResult) certPathBuilder().build(params);
 	}
 
-	private ValidationResult validatePath(CertPath path, Set<TrustAnchor> anchors)
+	private ValidationResult validatePath(CertPath path, Set<TrustAnchor> anchors,
+			CertStore crlStore, CertStore certificateStore)
 	{
 		X509Certificate[] diagnosticChain = pathCertificates(path);
+		PKIXCertPathValidatorResult result;
 		try
 		{
-			PKIXParameters params = new PKIXParameters(anchors);
-			params.setRevocationEnabled(false);
-			PKIXCertPathValidatorResult result = (PKIXCertPathValidatorResult)
-					certPathValidator().validate(path, params);
-			return valid(resolvedChain(path, result.getTrustAnchor()));
+			result = validateNative(path, anchors,
+					certificateStore, null);
 		} catch (CertPathValidatorException e)
 		{
-			return invalidValidation(diagnosticChain, e);
+			return invalidValidation(diagnosticChain, e,
+					ValidationStage.PATH_VALIDATION);
 		} catch (InvalidAlgorithmParameterException e)
 		{
 			throw new IllegalStateException("Native BC PKIX validator rejected its parameters", e);
@@ -181,16 +224,65 @@ final class NativeBCPKIXValidator
 			return invalid(diagnosticChain, -1, ValidationErrorCode.PKIX_FAILURE,
 					ValidationStage.PATH_VALIDATION, e);
 		}
+
+		if (crlStore != null)
+		{
+			try
+			{
+				result = validateNative(path, anchors, certificateStore, crlStore);
+			} catch (CertPathValidatorException e)
+			{
+				return invalidValidation(diagnosticChain, e,
+						ValidationStage.REVOCATION);
+			} catch (InvalidAlgorithmParameterException e)
+			{
+				throw new IllegalStateException(
+						"Native BC PKIX validator rejected its CRL parameters", e);
+			} catch (RuntimeException e)
+			{
+				return invalid(diagnosticChain, -1, ValidationErrorCode.PKIX_FAILURE,
+						ValidationStage.REVOCATION, e);
+			}
+		}
+		return valid(resolvedChain(path, result.getTrustAnchor()));
+	}
+
+	private PKIXCertPathValidatorResult validateNative(CertPath path,
+			Set<TrustAnchor> anchors, CertStore certificateStore, CertStore crlStore)
+			throws CertPathValidatorException, InvalidAlgorithmParameterException
+	{
+		PKIXParameters params = new PKIXParameters(anchors);
+		params.setRevocationEnabled(crlStore != null);
+		params.addCertStore(certificateStore);
+		if (crlStore != null)
+			params.addCertStore(crlStore);
+		PKIXExtendedParameters.Builder extended =
+				new PKIXExtendedParameters.Builder(params);
+		extended.setUseDeltasEnabled(crlStore != null);
+		return (PKIXCertPathValidatorResult) certPathValidator().validate(path,
+				extended.build());
 	}
 
 	private ValidationResult invalidValidation(X509Certificate[] chain,
-			CertPathValidatorException failure)
+			CertPathValidatorException failure, ValidationStage failureStage)
 	{
 		int position = failure.getIndex();
 		if (position < 0 || chain == null || position >= chain.length)
 			position = -1;
 
 		CertPathValidatorException.Reason reason = failure.getReason();
+		if (failureStage == ValidationStage.REVOCATION)
+		{
+			if (reason == BasicReason.REVOKED)
+				return invalid(chain, position, ValidationErrorCode.CERTIFICATE_REVOKED,
+						ValidationStage.REVOCATION, failure);
+			if (reason == BasicReason.UNDETERMINED_REVOCATION_STATUS)
+				return invalid(chain, position,
+						ValidationErrorCode.UNDETERMINED_REVOCATION_STATUS,
+						ValidationStage.REVOCATION, failure);
+			return invalid(chain, position, ValidationErrorCode.PKIX_FAILURE,
+					ValidationStage.REVOCATION, failure);
+		}
 		if (reason == BasicReason.EXPIRED ||
 				hasCause(failure, CertificateExpiredException.class))
 			return invalid(chain, position, ValidationErrorCode.CERTIFICATE_EXPIRED,
@@ -206,12 +298,6 @@ final class NativeBCPKIXValidator
 		if (reason == BasicReason.ALGORITHM_CONSTRAINED)
 			return invalid(chain, position, ValidationErrorCode.ALGORITHM_CONSTRAINED,
 					ValidationStage.PATH_VALIDATION, failure);
-		if (reason == BasicReason.REVOKED)
-			return invalid(chain, position, ValidationErrorCode.CERTIFICATE_REVOKED,
-					ValidationStage.REVOCATION, failure);
-		if (reason == BasicReason.UNDETERMINED_REVOCATION_STATUS)
-			return invalid(chain, position, ValidationErrorCode.UNDETERMINED_REVOCATION_STATUS,
-					ValidationStage.REVOCATION, failure);
 		if (reason == PKIXReason.NOT_CA_CERT)
 			return invalid(chain, position, ValidationErrorCode.NOT_CA,
 					ValidationStage.PATH_VALIDATION, failure);
@@ -237,7 +323,7 @@ final class NativeBCPKIXValidator
 			return invalid(chain, position, ValidationErrorCode.UNRESOLVED_CRITICAL_EXTENSION,
 					ValidationStage.PATH_VALIDATION, failure);
 		return invalid(chain, position, ValidationErrorCode.PKIX_FAILURE,
-				ValidationStage.PATH_VALIDATION, failure);
+				failureStage, failure);
 	}
 
 	private boolean hasCause(Throwable failure, Class<? extends Throwable> expected)
