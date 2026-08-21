@@ -39,6 +39,23 @@ public class X500NameUtilsTest
 	{
 		assertThat(X500NameUtils.getReadableForm("GN=test,DC=root")).isEqualTo("GIVENNAME=test,DC=root");
 	}
+
+	@Test
+	public void shouldAcceptLegacyNonStandardCountryValues() throws IOException
+	{
+		X500Principal principal = X500NameUtils.getX500Principal("CN=test,C=Country");
+
+		assertThat(principal.getName()).isEqualTo("CN=test,C=Country");
+	}
+
+	@Test
+	public void shouldAcceptLegacyLongCommonNames() throws IOException
+	{
+		String longCommonName = new String(new char[65]).replace('\0', 'a');
+		X500Principal principal = X500NameUtils.getX500Principal("CN=" + longCommonName + ",C=PL");
+
+		assertThat(principal.getName()).isEqualTo("CN=" + longCommonName + ",C=PL");
+	}
 	
 	@Test
 	public void testPrint()
