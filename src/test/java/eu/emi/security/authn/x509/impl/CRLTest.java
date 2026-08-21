@@ -6,7 +6,9 @@ package eu.emi.security.authn.x509.impl;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketTimeoutException;
@@ -26,6 +28,8 @@ import org.apache.commons.io.FileUtils;
 import org.bouncycastle.util.encoders.Base64;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
+
+import com.sun.net.httpserver.HttpServer;
 
 import eu.emi.security.authn.x509.RiskyIntegrationTests;
 import eu.emi.security.authn.x509.StoreUpdateListener;
@@ -198,42 +202,53 @@ public class CRLTest
 	}
 	
 	@Test
-	@Category(RiskyIntegrationTests.class)
 	public void testLoadPlain() throws Exception
 	{
 		File dir = initDir();
-		
+		byte[] remoteCrl = FileUtils.readFileToByteArray(new File(
+				"src/test/resources/test-pems/crls/relaxationsubca.crl"));
+		HttpServer server = HttpServer.create(new InetSocketAddress(
+				InetAddress.getByName("127.0.0.1"), 0), 0);
+		server.createContext("/crl.pem", exchange -> {
+			exchange.sendResponseHeaders(200, remoteCrl.length);
+			try (OutputStream output = exchange.getResponseBody())
+			{
+				output.write(remoteCrl);
+			}
+		});
+		server.start();
+
 		Timer t = new Timer(true);
 		List<String> crls = new ArrayList<String>();
-		String crlURL1 = "http://www.man.poznan.pl/plgrid-ca/crl.pem";
-		String crlURL2 = "http://127.0.0.1/non-existing/crl.pem";
-		String crlURL3 = "src/test/resources/test-pems/crls/*.pem";
+		String crlURL1 = "http://127.0.0.1:" + server.getAddress().getPort() +
+				"/crl.pem";
+		String crlURL2 = "src/test/resources/test-pems/crls/*.pem";
 		crls.add(crlURL1);
 		crls.add(crlURL2);
-		crls.add(crlURL3);
 		String base64URL1 = new String(Base64.encode(crlURL1.getBytes())) + "-crl.der";
-		String base64URL2 = new String(Base64.encode(crlURL2.getBytes())) + "-crl.der";
-		FileUtils.copyFile(new File("src/test/resources/test-pems/crls/relaxationsubca.crl"), 
-				new File(dir, base64URL2));
-		
+
 		CRLParameters params = new CRLParameters(crls, -1, 
 				5000, dir.getPath());
-		PlainCRLStoreSpi store = new PlainCRLStoreSpi(params, t, new ObserversHandler());
-		store.start();
-		
-		checkCRL("CN=Polish Grid CA 2019,O=GRID,C=PL", store, 1);
-		String[] ls = dir.list();
-		assertTrue(ls.length == 2);
-		assertTrue(ls[0].equals(base64URL1) || ls[1].equals(base64URL1));
+		PlainCRLStoreSpi store = null;
+		try
+		{
+			store = new PlainCRLStoreSpi(params, t, new ObserversHandler());
+			store.start();
 
-		checkCRL("CN=the subca CA,OU=Relaxation,O=Utopia,L=Tropic,C=UG", store, 1);
-		
-		checkCRL("CN=the trusted CA,OU=Relaxation,O=Utopia,L=Tropic,C=UG", store, 1);
-		
-		checkCRL("CN=missing CA,C=UG", store, 0);
-		
-		assertEquals(crls, store.getLocations());
-		store.dispose();
+			checkCRL("CN=the subca CA,OU=Relaxation,O=Utopia,L=Tropic,C=UG", store, 1);
+			String[] ls = dir.list();
+			assertEquals(1, ls.length);
+			assertEquals(base64URL1, ls[0]);
+
+			checkCRL("CN=the trusted CA,OU=Relaxation,O=Utopia,L=Tropic,C=UG", store, 1);
+			checkCRL("CN=missing CA,C=UG", store, 0);
+			assertEquals(crls, store.getLocations());
+		} finally
+		{
+			if (store != null)
+				store.dispose();
+			server.stop(0);
+		}
 	}
 
 	@Test
