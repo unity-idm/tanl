@@ -41,24 +41,25 @@ public class Examples
 	{
 		
 /*
- * Validates toBeChecked chain using Openssl style truststore, from
- * the /etc/grid-security/certificates directory. Truststore is
- * reread every minute. The additional settings are not defined and
- * so defaults are used: CRLs are forced if are present. No listeners are registered to
- * be notified about trusted CA certificate or CRL reloading.
+ * Validates toBeChecked chain using an OpenSSL-style truststore from
+ * an application-selected directory. The truststore is reread every
+ * minute. Default revocation settings use OCSP when a responder is
+ * available and enforce every applicable CRL that is present. No
+ * trust-material update listeners are registered.
  */
 X509Certificate[] toBeChecked = null;
-X509CertChainValidator vff = new OpensslCertChainValidator(
-	"/etc/grid-security/certificates", 
+OpensslCertChainValidator vff = new OpensslCertChainValidator(
+	"/path/to/openssl-truststore",
 	60000);
 
 ValidationResult result = vff.validate(toBeChecked);
 if (result.isValid()) {
 	//...
 } else {
-	List<ValidationError> errors = result.getErrors();
+	ValidationError error = result.getPrimaryError();
 	//...
 }
+vff.dispose();
 	
 	}
 	
