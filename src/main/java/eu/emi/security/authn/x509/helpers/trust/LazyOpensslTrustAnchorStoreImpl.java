@@ -22,9 +22,6 @@ import eu.emi.security.authn.x509.StoreUpdateListener;
 import eu.emi.security.authn.x509.StoreUpdateListener.Severity;
 import eu.emi.security.authn.x509.helpers.CachedElement;
 import eu.emi.security.authn.x509.helpers.ObserversHandler;
-import eu.emi.security.authn.x509.helpers.ns.LazyEuGridPmaNamespacesStore;
-import eu.emi.security.authn.x509.helpers.ns.LazyGlobusNamespacesStore;
-import eu.emi.security.authn.x509.helpers.ns.NamespacesStore;
 import eu.emi.security.authn.x509.impl.CertificateUtils;
 import eu.emi.security.authn.x509.impl.CertificateUtils.Encoding;
 import eu.emi.security.authn.x509.impl.X500NameUtils;
@@ -33,10 +30,7 @@ import eu.emi.security.authn.x509.impl.X500NameUtils;
  * Implementation of the truststore which uses CA certificates from a single directory 
  * in OpenSSL format. Each certificate should be stored in a file named HASH.NUM,
  * where HASH is an 8 digit hex number. The NUM must be a number, starting from 0.
- * The hash can be either of openssl pre 1.0.0 version 
- * (with 8 least significant digits of the MD5 hash of the certificate subject in DER format)
- * or in openssl 1.0.0 and above format (SHA1 hash of specially normalized DN). The class is configured
- * to use one or another, never both.
+ * The hash uses the OpenSSL 1.0.0 and above format (SHA-1 hash of a normalized DN).
  * <p>
  * This class (contrary to the {@link OpensslTrustAnchorStoreImpl}) doesn't extend {@link DirectoryTrustAnchorStore} 
  * and therefore certificates (and all corresponding files) are not loaded at startup and kept in memory.
@@ -44,25 +38,19 @@ import eu.emi.security.authn.x509.impl.X500NameUtils;
  * 
  * @author K. Benedyczak
  */
-public class LazyOpensslTrustAnchorStoreImpl extends AbstractTrustAnchorStore implements OpensslTrustAnchorStore
+public class LazyOpensslTrustAnchorStoreImpl extends AbstractTrustAnchorStore
 {
 	public static final String CERTS_REGEXP = "........\\.[0-9]+";
 	protected CachedElement<Set<TrustAnchorExt>> cachedAnchors;
 	protected Map<X500Principal, CachedElement<Set<TrustAnchorExt>>> cachedAnchorsPerIssuer;
-	private boolean openssl1Mode;
-	private NamespacesStore pmaNsStore;
-	private NamespacesStore globusNsStore;
 	private File baseDirectory;
 	
 	public LazyOpensslTrustAnchorStoreImpl(String basePath, long updateInterval, 
-			ObserversHandler observers, boolean openssl1Mode)
+			ObserversHandler observers)
 	{
 		super(updateInterval, observers);
 		this.baseDirectory = new File(basePath);
-		this.openssl1Mode = openssl1Mode;
 		this.cachedAnchorsPerIssuer = new WeakHashMap<X500Principal, CachedElement<Set<TrustAnchorExt>>>(150);
-		pmaNsStore = new LazyEuGridPmaNamespacesStore(observers, openssl1Mode, basePath, updateInterval);
-		globusNsStore = new LazyGlobusNamespacesStore(observers, openssl1Mode, basePath, updateInterval);
 	}
 	
 	protected X509Certificate tryLoadCertInternal(File file)
@@ -95,7 +83,7 @@ public class LazyOpensslTrustAnchorStoreImpl extends AbstractTrustAnchorStore im
 		if (cert == null)
 			return;
 
-		String certHash = OpensslTruststoreHelper.getOpenSSLCAHash(cert.getSubjectX500Principal(), openssl1Mode);
+		String certHash = OpensslTruststoreHelper.getOpenSSLCAHash(cert.getSubjectX500Principal());
 		if (!fileHash.equalsIgnoreCase(certHash))
 			return;
 
@@ -104,18 +92,6 @@ public class LazyOpensslTrustAnchorStoreImpl extends AbstractTrustAnchorStore im
 	}
 	
 	
-	@Override
-	public NamespacesStore getPmaNsStore()
-	{
-		return pmaNsStore;
-	}
-
-	@Override
-	public NamespacesStore getGlobusNsStore()
-	{
-		return globusNsStore;
-	}
-
 	private Set<TrustAnchorExt> loadTrustAnchors()
 	{
 		Collection<File> certs = OpensslTruststoreHelper.getFilesWithRegexp(CERTS_REGEXP, baseDirectory);
@@ -183,7 +159,7 @@ public class LazyOpensslTrustAnchorStoreImpl extends AbstractTrustAnchorStore im
 			return;
 		}
 		Set<TrustAnchorExt> toCache = new HashSet<TrustAnchorExt>();
-		String hash = OpensslTruststoreHelper.getOpenSSLCAHash(issuer, openssl1Mode);
+		String hash = OpensslTruststoreHelper.getOpenSSLCAHash(issuer);
 		Collection<File> certs = OpensslTruststoreHelper.getFilesWithRegexp(hash+"\\.[0-9]+", baseDirectory);
 		for (File file: certs)
 		{
@@ -201,5 +177,4 @@ public class LazyOpensslTrustAnchorStoreImpl extends AbstractTrustAnchorStore im
 		cachedAnchorsPerIssuer.put(issuer, new CachedElement<Set<TrustAnchorExt>>(toCache));
 	}
 }
-
 

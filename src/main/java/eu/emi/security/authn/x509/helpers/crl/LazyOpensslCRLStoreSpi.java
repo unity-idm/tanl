@@ -46,7 +46,6 @@ public class LazyOpensslCRLStoreSpi extends AbstractCRLStoreSPI
 	private static final String SUFFIX = "\\.r[0-9]+";
 	//constant state
 	private final File directory;
-	private final boolean openssl1Mode;
 	
 	//variable state
 	private Map<String, CachedElement<List<X509CRL>>> cachedCRLsByHash;
@@ -56,16 +55,14 @@ public class LazyOpensslCRLStoreSpi extends AbstractCRLStoreSPI
 	 * @param path path
 	 * @param crlUpdateInterval crl update interval
 	 * @param observers observers handler
-	 * @param openssl1Mode openssl 1 mode
 	 * @throws InvalidAlgorithmParameterException invalid algorithm parameter exception
 	 */
-	public LazyOpensslCRLStoreSpi(String path, long crlUpdateInterval, ObserversHandler observers,
-			boolean openssl1Mode) throws InvalidAlgorithmParameterException
+	public LazyOpensslCRLStoreSpi(String path, long crlUpdateInterval, ObserversHandler observers)
+			throws InvalidAlgorithmParameterException
 	{
 		super(new CRLParameters(Collections.singletonList(path),
 				crlUpdateInterval, 0, null), observers);
 		this.directory = new File(path);
-		this.openssl1Mode = openssl1Mode;
 		cachedCRLsByHash = new WeakHashMap<String, CachedElement<List<X509CRL>>>();
 	}
 
@@ -127,7 +124,7 @@ public class LazyOpensslCRLStoreSpi extends AbstractCRLStoreSPI
 	@Override
 	protected synchronized Collection<X509CRL> getCRLForIssuer(X500Principal issuer)
 	{
-		String issuerHash = OpensslTruststoreHelper.getOpenSSLCAHash(issuer, openssl1Mode);
+		String issuerHash = OpensslTruststoreHelper.getOpenSSLCAHash(issuer);
 		CachedElement<List<X509CRL>> cached = cachedCRLsByHash.get(issuerHash);
 		if (cached != null && !cached.isExpired(updateInterval))
 		{
@@ -163,6 +160,5 @@ public class LazyOpensslCRLStoreSpi extends AbstractCRLStoreSPI
 	}
 
 }
-
 
 

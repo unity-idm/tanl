@@ -15,7 +15,6 @@ import org.junit.Assert;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 
-import eu.emi.security.authn.x509.NamespaceCheckingMode;
 import eu.emi.security.authn.x509.RiskyIntegrationTests;
 import eu.emi.security.authn.x509.impl.CertificateUtils.Encoding;
 
@@ -27,12 +26,10 @@ public class OpensslValidatorStressTest
 	public void testSpeedup() throws Exception
 	{
 		new OpensslCertChainValidator(
-				"src/test/resources/glite-utiljava/grid-security/certificates", false,
-				NamespaceCheckingMode.EUGRIDPMA_GLOBUS, 100000, 
+				"src/test/resources/glite-utiljava/grid-security/certificates-newhash-all", 100000,
 				new ValidatorParamsExt(), false);
 		new OpensslCertChainValidator(
-				"src/test/resources/glite-utiljava/grid-security/certificates", false,
-				NamespaceCheckingMode.EUGRIDPMA_GLOBUS, 100000, 
+				"src/test/resources/glite-utiljava/grid-security/certificates-newhash-all", 100000,
 				new ValidatorParamsExt(), true);
 
 		
@@ -40,8 +37,7 @@ public class OpensslValidatorStressTest
 		for (int i=0; i<500; i++) 
 		{
 			OpensslCertChainValidator validator1 = new OpensslCertChainValidator(
-					"src/test/resources/glite-utiljava/grid-security/certificates", false,
-					NamespaceCheckingMode.EUGRIDPMA_GLOBUS, 1000, 
+					"src/test/resources/glite-utiljava/grid-security/certificates-newhash-all", 1000,
 					new ValidatorParamsExt(), false);
 			validator1.dispose();
 		}
@@ -51,8 +47,7 @@ public class OpensslValidatorStressTest
 		for (int i=0; i<500; i++) 
 		{
 			OpensslCertChainValidator validator1 = new OpensslCertChainValidator(
-					"src/test/resources/glite-utiljava/grid-security/certificates", false,
-					NamespaceCheckingMode.EUGRIDPMA_GLOBUS, 1000, 
+					"src/test/resources/glite-utiljava/grid-security/certificates-newhash-all", 1000,
 					new ValidatorParamsExt(), true);
 			validator1.dispose();
 		}
@@ -68,8 +63,7 @@ public class OpensslValidatorStressTest
 	public void opensslValidationShouldBeParallel() throws Exception
 	{
 		final OpensslCertChainValidator validator = new OpensslCertChainValidator(
-				"src/test/resources/glite-utiljava/grid-security/certificates", false,
-				NamespaceCheckingMode.EUGRIDPMA_GLOBUS, 100000, 
+				"src/test/resources/glite-utiljava/grid-security/certificates-newhash-all", 100000,
 				new ValidatorParamsExt(), false);
 		final X509Certificate[] toCheck = CertificateUtils.loadCertificateChain(new FileInputStream(
 				"src/test/resources/glite-utiljava/trusted-certs/trusted_client.cert"), 
@@ -122,9 +116,8 @@ public class OpensslValidatorStressTest
 		for (int i=0; i<2000; i++) 
 		{
 			new OpensslCertChainValidator(
-					"src/test/resources/glite-utiljava/grid-security/certificates",
-					false,
-					NamespaceCheckingMode.EUGRIDPMA_GLOBUS, rand.nextInt(3), 
+					"src/test/resources/glite-utiljava/grid-security/certificates-newhash-all",
+					rand.nextInt(3),
 					new ValidatorParamsExt(), false);
 			if (i%100 == 0)
 			{
@@ -144,5 +137,4 @@ public class OpensslValidatorStressTest
 					+ (usedMem2-usedMem1));
 	}
 }
-
 

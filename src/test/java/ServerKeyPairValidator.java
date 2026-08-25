@@ -1,5 +1,4 @@
 import eu.emi.security.authn.x509.CrlCheckingMode;
-import eu.emi.security.authn.x509.NamespaceCheckingMode;
 import eu.emi.security.authn.x509.OCSPCheckingMode;
 import eu.emi.security.authn.x509.OCSPParametes;
 import eu.emi.security.authn.x509.RevocationParameters;
@@ -53,21 +52,15 @@ public class ServerKeyPairValidator {
 
         long trustAnchorRefreshInterval = 3_600_000;
 
-        NamespaceCheckingMode namespaceMode =
-            NamespaceCheckingMode.valueOf("IGNORE");
-        CrlCheckingMode crlCheckingMode =
+		CrlCheckingMode crlCheckingMode =
             CrlCheckingMode.valueOf("REQUIRE");
         OCSPCheckingMode ocspCheckingMode =
             OCSPCheckingMode.valueOf("REQUIRE");
 		ValidatorParams validatorParams =
 			new ValidatorParams(new RevocationParameters(crlCheckingMode,
 												 new OCSPParametes(ocspCheckingMode)));
-        X509CertChainValidator validator = new OpensslCertChainValidator(caDir,
-                                                                         false,
-                                                                         namespaceMode,
-                                                                         trustAnchorRefreshInterval,
-                                                                         validatorParams,
-                                                                         false);
+		X509CertChainValidator validator = new OpensslCertChainValidator(caDir,
+				trustAnchorRefreshInterval, validatorParams, false);
 
 
         // 3. Validate certificate chain against truststore

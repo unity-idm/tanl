@@ -31,7 +31,6 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import eu.emi.security.authn.x509.CrlCheckingMode;
-import eu.emi.security.authn.x509.NamespaceCheckingMode;
 import eu.emi.security.authn.x509.OCSPCheckingMode;
 import eu.emi.security.authn.x509.OCSPParametes;
 import eu.emi.security.authn.x509.RevocationParameters;
@@ -70,11 +69,11 @@ public class GLiteValidatorTest
 	};
 
 	protected void gliteTest(boolean reverse, TestCase tc,
-			String trustStore, boolean revocation, boolean openssl1Mode)
+			String trustStore, boolean revocation)
 	{
 		try
 		{
-			gliteTestInternalWithOpensslStore(reverse, tc, trustStore, revocation, openssl1Mode);
+			gliteTestInternalWithOpensslStore(reverse, tc, trustStore, revocation);
 		} catch (Exception e)
 		{
 			e.printStackTrace();
@@ -84,7 +83,7 @@ public class GLiteValidatorTest
 	}
 	
 	protected void gliteTestInternalWithOpensslStore(boolean reverse, TestCase tc, 
-			String trustStore, boolean revocation, boolean openssl1Mode) throws Exception
+			String trustStore, boolean revocation) throws Exception
 	{
 		System.out.println("Test Case: " + tc.name);
 		
@@ -118,9 +117,7 @@ public class GLiteValidatorTest
 			new OCSPParametes(OCSPCheckingMode.IGNORE)), listeners);
 		OpensslCertChainValidator validator = new OpensslCertChainValidator(
 				"src/test/resources/glite-utiljava/grid-security/"+trustStore+"/",
-				openssl1Mode,
-				NamespaceCheckingMode.EUGRIDPMA, 
-				-1, 
+				-1,
 				params,
 				true);
 		
@@ -154,33 +151,17 @@ public class GLiteValidatorTest
 	}
 	
 	@Test
-	public void test1()
-	{
-		String truststore = "certificates";
-		boolean revocation = true;
-		boolean openssl1Mode = false;
-		
-		for (TestCase tc: trustedTestCases)
-			gliteTest(false, tc, truststore, revocation, openssl1Mode);
-		for (TestCase tc: trustedRevokedTestCases)
-			gliteTest(false, tc, truststore, revocation, openssl1Mode);
-		for (TestCase tc: fakeCertsTestCases)
-			gliteTest(false, tc, truststore, revocation, openssl1Mode);
-	}
-
-	@Test
-	public void test1WithNewHash()
+	public void testModernHashedStore()
 	{
 		String truststore = "certificates-newhash-all";
 		boolean revocation = true;
-		boolean openssl1Mode = true;
 
 		for (TestCase tc: trustedTestCases)
-			gliteTest(false, tc, truststore, revocation, openssl1Mode);
+			gliteTest(false, tc, truststore, revocation);
 		for (TestCase tc: trustedRevokedTestCases)
-			gliteTest(false, tc, truststore, revocation, openssl1Mode);
+			gliteTest(false, tc, truststore, revocation);
 		for (TestCase tc: fakeCertsTestCases)
-			gliteTest(false, tc, truststore, revocation, openssl1Mode);
+			gliteTest(false, tc, truststore, revocation);
 	}
 
 	
@@ -189,14 +170,13 @@ public class GLiteValidatorTest
 	{
 		String truststore = "certificates-withoutCrl";
 		boolean revocation = false;
-		boolean openssl1Mode = false;
 
 		for (TestCase tc: trustedTestCases)
-			gliteTest(false, tc, truststore, revocation, openssl1Mode);
+			gliteTest(false, tc, truststore, revocation);
 		for (TestCase tc: trustedRevokedTestCases)
-			gliteTest(true, tc, truststore, revocation, openssl1Mode);
+			gliteTest(true, tc, truststore, revocation);
 		for (TestCase tc: fakeCertsTestCases)
-			gliteTest(false, tc, truststore, revocation, openssl1Mode);
+			gliteTest(false, tc, truststore, revocation);
 	}
 
 	@Test
@@ -204,18 +184,16 @@ public class GLiteValidatorTest
 	{
 		String truststore = "certificates-withoutCrl";
 		boolean revocation = true;
-		boolean openssl1Mode = false;
-		gliteTest(true, trustedTestCases[0], truststore, revocation, openssl1Mode);
-		gliteTest(false, trustedRevokedTestCases[0], truststore, revocation, openssl1Mode);
+		gliteTest(true, trustedTestCases[0], truststore, revocation);
+		gliteTest(false, trustedRevokedTestCases[0], truststore, revocation);
 	}
 
 	@Test
 	public void testSlash()
 	{
-		String truststore = "certificates";
+		String truststore = "certificates-newhash-all";
 		boolean revocation = false;
-		boolean openssl1Mode = false;
 		TestCase slash = new TestCase("slash-certs/slash_client_slash", true);
-		gliteTest(false, slash, truststore, revocation, openssl1Mode);
+		gliteTest(false, slash, truststore, revocation);
 	}
 }

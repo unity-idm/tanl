@@ -16,8 +16,6 @@ public interface StoreUpdateListener
 {
 	public static final String CA_CERT = "CA Certificate";
 	public static final String CRL = "CRL";
-	public static final String EACL_NAMESPACE = "EACL namespace (signing_policy)";
-	public static final String EUGRIDPMA_NAMESPACE = "EUGridPMA namespace";
 	public static final String OCSP = "OCSP";
 	
 	public enum Severity {
