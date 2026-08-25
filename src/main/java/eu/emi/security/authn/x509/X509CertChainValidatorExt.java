@@ -17,12 +17,6 @@ package eu.emi.security.authn.x509;
 public interface X509CertChainValidatorExt extends X509CertChainValidator
 {
 	/**
-	 * Returns whether this validator supports proxy certificates.
-	 * @return proxy certificates support mode
-	 */
-	public ProxySupport getProxySupport();
-	
-	/**
 	 * Gets the current revocation checking mode.
 	 * @return the current mode
 	 */

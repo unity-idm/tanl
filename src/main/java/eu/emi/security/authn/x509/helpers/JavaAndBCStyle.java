@@ -10,7 +10,10 @@ import java.util.Map;
 
 import javax.security.auth.x500.X500Principal;
 
+import org.bouncycastle.asn1.ASN1Encodable;
 import org.bouncycastle.asn1.ASN1ObjectIdentifier;
+import org.bouncycastle.asn1.DERPrintableString;
+import org.bouncycastle.asn1.DERUTF8String;
 import org.bouncycastle.asn1.x500.AttributeTypeAndValue;
 import org.bouncycastle.asn1.x500.RDN;
 import org.bouncycastle.asn1.x500.X500Name;
@@ -111,6 +114,22 @@ public class JavaAndBCStyle extends BCStyle
 		if (asn != null)
 			return asn;
 		return super.attrNameToOID(attrName);
+	}
+
+	/**
+	 * Preserve the permissive string-to-DN conversion used by this style before
+	 * Bouncy Castle 1.85. The JDK accepts non-standard country lengths and common
+	 * names longer than the RFC 5280 upper bound, and this class is deliberately
+	 * used to bridge such JDK-compatible names to Bouncy Castle.
+	 */
+	@Override
+	protected ASN1Encodable encodeStringValue(ASN1ObjectIdentifier oid, String value)
+	{
+		if (oid.equals(C) || oid.equals(JURISDICTION_C))
+			return new DERPrintableString(value);
+		if (oid.equals(CN) && value.length() > 64)
+			return new DERUTF8String(value);
+		return super.encodeStringValue(oid, value);
 	}
 
 	/*

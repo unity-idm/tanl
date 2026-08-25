@@ -16,7 +16,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
-import eu.emi.security.authn.x509.ProxySupport;
 import eu.emi.security.authn.x509.RevocationParameters;
 import eu.emi.security.authn.x509.StoreUpdateListener;
 import eu.emi.security.authn.x509.ValidationError;
@@ -53,7 +52,6 @@ public abstract class AbstractValidator implements X509CertChainValidatorExt
 	private TrustAnchorStore caStore;
 	private AbstractCRLStoreSPI crlStore;
 	protected BCCertPathValidator validator;
-	private ProxySupport proxySupport;
 	private RevocationParameters revocationMode;
 	protected boolean disposed;
 	
@@ -78,11 +76,10 @@ public abstract class AbstractValidator implements X509CertChainValidatorExt
 	 * the non-default constructor.
 	 * @param caStore CA store
 	 * @param crlStore CRL store
-	 * @param proxySupport proxy support
 	 * @param revocationCheckingMode revocation checking mode
 	 */
 	protected synchronized void init(TrustAnchorStore caStore, AbstractCRLStoreSPI crlStore, 
-			ProxySupport proxySupport, RevocationParameters revocationCheckingMode)
+			RevocationParameters revocationCheckingMode)
 	{
 		disposed = false;
 		if (caStore != null)
@@ -90,7 +87,6 @@ public abstract class AbstractValidator implements X509CertChainValidatorExt
 		if (crlStore != null)
 			this.crlStore = crlStore;
 		this.validator = new BCCertPathValidator();
-		this.proxySupport = proxySupport;
 		this.revocationMode = revocationCheckingMode;
 	}
 	
@@ -131,7 +127,7 @@ public abstract class AbstractValidator implements X509CertChainValidatorExt
 		ValidationResult result;
 		try
 		{
-			result = validator.validate(certChain, getProxySupport() == ProxySupport.ALLOW, anchors,
+			result = validator.validate(certChain, anchors,
 					new SimpleCRLStore(crlStore), revocationMode, observers);
 		} catch (CertificateException e)
 		{
@@ -215,15 +211,6 @@ public abstract class AbstractValidator implements X509CertChainValidatorExt
 		{
 			listeners.remove(listener);
 		}
-	}
-	
-	/**
-	 * {@inheritDoc}
-	 */
-	@Override
-	public synchronized ProxySupport getProxySupport()
-	{
-		return proxySupport;
 	}
 	
 	/**

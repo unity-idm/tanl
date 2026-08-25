@@ -19,13 +19,11 @@ The EMI X.509 Common Authentication Library, the Java edition, provides support 
 
 * off-line certificate validation,
 * creation of SSL sockets (both server and client side),
-* handling certificate DNs, also in text format,
-* usage of proxy certificates: from proxy generation to validation.
+* handling certificate DNs, also in text format.
 
 
 The library provides implementation of an easy to use and flexible validation 
-logic, which can take advantage of different trust material sources. Proxy certificates,
-which are commonly used in the grid environment, are fully supported.
+logic, which can take advantage of different trust material sources.
 The library is designed in such a way, that it can be easily integrated with the standard JSSE
 stack. Therefore you can use it also in variety of 3rd party Java containers. 
 
@@ -73,34 +71,12 @@ To make creation of SSL sockets easy there is a convenience class
 +eu.emi.security{zwsp}.authn.x509.impl.SocketFactoryCreator+ which provides methods creating SSL server and
 client socket factories. Factory is created from credential and validator instances.
 
-*Proxy certificate generation*::
-Library allows for creation of proxy certificates. It is possible to perform it in two ways. The simpler
-one is intended to be used when initial proxy certificate is created locally, from owned credentials. 
-+eu.emi.security.authn.x509.proxy.ProxyCertificateOptions+ object must be created with 
-required parameters. Other approach can be also taken when proxy is generated for a service, which requested it
-by issuing a proxy certificate signing request (CSR). 
-+eu.emi.security.authn.x509.proxy.ProxyRequestOptions+
-object is used to pass the required parameters. In both cases are handled by the proxy generation utility in the  
-+eu.emi.security.authn.x509.proxy.ProxyGenerator+ class.
-
-*Proxy certificate CSR generation*::
-Library allows for creation of proxy CSR, what is typically needed on a service side, to request a 
-proxy certificate from a service user. Proxy CSR can be populated with additional data like requested
-extensions. The tool for creating proxy CSRs is available in the class 
-+eu.emi.security.authn.x509.proxy.ProxyCSRGenerator+. NOTE(!) that the party which is generating 
-proxy certificate by signing the proxy CSR, can ignore the requested extensions. In this library 
-the user has to extract requested parameters from the proxy CSR and if those are accepted, copy them to
-the +eu.emi.{zwsp}security.authn.x509.proxy.ProxyRequestOptions+ object.
-
 *Utilities*::
 There are also additional utilities in this library. It is important to note the following ones:
 +eu.emi.security.authn.x509.impl.X500NameUtils+ provides methods to 
 compare and print string representations of 
 distinguished names; +eu.emi.security.{zwsp}authn.x509.impl.CertificateUtils+ 
-allows for loading and saving credentials and
-to pretty-print certificate chains. Classes +ProxyChainInfo+, +ProxyUtils+ and +ProxyCSRInfo+
-from the +eu.emi.{zwsp}security.authn.x509.proxy+ package allows programmers to inspect 
-proxy certificates, chains with proxy certificates and proxy CSRs.
+allows for loading and saving credentials and to pretty-print certificate chains.
 
 
 Library usage in a project
@@ -163,8 +139,7 @@ certificates:
  * the /etc/grid-security/certificates directory. Both kinds of 
  * namespaces are checked and forced if are present. Truststore is 
  * reread every minute. The additional settings are not defined and
- * so defaults are used: CRLs are forced if are present. Proxy 
- * certificates are supported. No listeners are registered to 
+ * so defaults are used: CRLs are forced if are present. No listeners are registered to
  * be notified about trusted CA certificates, CRLs or namespace 
  * definitions reloading.
  */
@@ -222,8 +197,8 @@ CRLParameters crlParams = new CRLParameters(crlSources, 3600000,
 	15000, "/tmp/crls");
 ValidatorParamsExt commonParams = new ValidatorParamsExt(
 	new RevocationParametersExt(CrlCheckingMode.REQUIRE, 
-		crlParams), 
-	ProxySupport.ALLOW, Collections.singletonList(listener));
+		crlParams),
+	Collections.singletonList(listener));
 
 KeystoreCertChainValidator v = new KeystoreCertChainValidator(
 	"/my/truststore.jks", keystorePassword, "JKS", 1000, 
@@ -336,8 +311,3 @@ Limitations and known issues
 * _limitation_ The library doesn't allow for configuring PKIX path policy requirements,
 all verifications are performed with the standard settings (_any_ policy). It is currently 
 not decided if in future this limitation will be removed.
-
-* _problem_ Due to an error in the underlying BouncyCastle library the Proxy Address Restriction 
-do not handle correctly masks which are NOT multiplies of 8 (/8, /16, /24, /32). This issue
-will disappear after updating dependencies to BC v. 1.47.
- 

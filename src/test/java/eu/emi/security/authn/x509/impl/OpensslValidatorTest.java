@@ -17,7 +17,6 @@ import eu.emi.security.authn.x509.CrlCheckingMode;
 import eu.emi.security.authn.x509.NamespaceCheckingMode;
 import eu.emi.security.authn.x509.OCSPCheckingMode;
 import eu.emi.security.authn.x509.OCSPParametes;
-import eu.emi.security.authn.x509.ProxySupport;
 import eu.emi.security.authn.x509.RevocationParameters;
 import eu.emi.security.authn.x509.StoreUpdateListener;
 import eu.emi.security.authn.x509.ValidationResult;
@@ -81,7 +80,7 @@ public class OpensslValidatorTest
 		OpensslCertChainValidator validator1 = new OpensslCertChainValidator(
 				"src/test/resources/expired-and-crl/openssl-trustdir",
 				NamespaceCheckingMode.EUGRIDPMA_GLOBUS, -1, 
-				new ValidatorParams(revocationParams, ProxySupport.ALLOW));
+				new ValidatorParams(revocationParams));
 		
 		InputStream is = new FileInputStream("src/test/resources/test-pems/expiredcert.pem");
 		X509Certificate[] certChain = CertificateUtils.loadCertificateChain(is, Encoding.PEM);

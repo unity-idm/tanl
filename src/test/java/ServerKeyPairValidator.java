@@ -2,7 +2,6 @@ import eu.emi.security.authn.x509.CrlCheckingMode;
 import eu.emi.security.authn.x509.NamespaceCheckingMode;
 import eu.emi.security.authn.x509.OCSPCheckingMode;
 import eu.emi.security.authn.x509.OCSPParametes;
-import eu.emi.security.authn.x509.ProxySupport;
 import eu.emi.security.authn.x509.RevocationParameters;
 import eu.emi.security.authn.x509.ValidationError;
 import eu.emi.security.authn.x509.ValidationResult;
@@ -60,10 +59,9 @@ public class ServerKeyPairValidator {
             CrlCheckingMode.valueOf("REQUIRE");
         OCSPCheckingMode ocspCheckingMode =
             OCSPCheckingMode.valueOf("REQUIRE");
-        ValidatorParams validatorParams =
-            new ValidatorParams(new RevocationParameters(crlCheckingMode,
-                                                         new OCSPParametes(ocspCheckingMode)),
-                                ProxySupport.ALLOW);
+		ValidatorParams validatorParams =
+			new ValidatorParams(new RevocationParameters(crlCheckingMode,
+												 new OCSPParametes(ocspCheckingMode)));
         X509CertChainValidator validator = new OpensslCertChainValidator(caDir,
                                                                          false,
                                                                          namespaceMode,

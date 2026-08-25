@@ -54,7 +54,7 @@ public class DirectoryCertChainValidator extends PlainCRLValidator
 	 * @param connectionTimeoutCA connection timeout in ms for downloading remote CA certificates, &gt;= 0. 0 means infinite timeout. 
 	 * @param diskCache directory path, where the remote CA certificates shall be cached 
 	 * after downloading. Can be null if cache shall not be used.
-	 * @param params common validator settings (revocation, initial listeners, proxy support, ...)
+	 * @param params common validator settings (revocation and initial listeners)
 	 * @throws IOException IO exception
 	 * @throws KeyStoreException key store exception
 	 */
@@ -67,7 +67,7 @@ public class DirectoryCertChainValidator extends PlainCRLValidator
 		trustStore = new DirectoryTrustAnchorStore(trustedLocations, diskCache, 
 				connectionTimeoutCA, timer, truststoreUpdateInterval, encoding, 
 				observers);
-		init(trustStore, crlStoreImpl, params.isAllowProxy(), params.getRevocationSettings());
+		init(trustStore, crlStoreImpl, params.getRevocationSettings());
 	}
 	
 	/**
@@ -98,7 +98,7 @@ public class DirectoryCertChainValidator extends PlainCRLValidator
 	 * 
 	 * Constructs a new validator instance with simplified parameters: only one location for 
 	 * certificates, truststore and CRLs are refreshed 
-	 * every hour, connection timeout is 15s, proxies are supported, encoding is PEM and no initial 
+	 * every hour, connection timeout is 15s, encoding is PEM and no initial
 	 * update listener is registered. 
 	 * <p>
 	 * Revocation settings are as follows: OCSP is enable with default settings and is used first.
@@ -123,8 +123,7 @@ public class DirectoryCertChainValidator extends PlainCRLValidator
 				new RevocationParametersExt(CrlCheckingMode.IF_VALID,
 						new CRLParameters(Collections.singletonList(crlLocation), 
 						3600000, 15000, diskCache), 
-						new OCSPParametes()), 
-				ValidatorParams.DEFAULT_PROXY_SUPPORT));
+						new OCSPParametes())));
 	}
 
 	
@@ -169,7 +168,7 @@ public class DirectoryCertChainValidator extends PlainCRLValidator
 				trustStore.getCacheDir(), trustStore.getConnTimeout(), 
 				timer, savedUpdateInterval, 
 				trustStore.getEncoding(), observers);
-		init(trustStore, null, getProxySupport(), getRevocationCheckingMode());
+		init(trustStore, null, getRevocationCheckingMode());
 	}
 	
 	/**
@@ -182,7 +181,6 @@ public class DirectoryCertChainValidator extends PlainCRLValidator
 		trustStore.dispose();
 	}
 }
-
 
 
 

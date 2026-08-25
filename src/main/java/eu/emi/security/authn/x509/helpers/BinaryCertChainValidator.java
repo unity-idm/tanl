@@ -10,7 +10,6 @@ import java.security.cert.X509Certificate;
 import eu.emi.security.authn.x509.CrlCheckingMode;
 import eu.emi.security.authn.x509.OCSPCheckingMode;
 import eu.emi.security.authn.x509.OCSPParametes;
-import eu.emi.security.authn.x509.ProxySupport;
 import eu.emi.security.authn.x509.RevocationParameters;
 import eu.emi.security.authn.x509.StoreUpdateListener;
 import eu.emi.security.authn.x509.ValidationErrorListener;
@@ -96,12 +95,6 @@ public class BinaryCertChainValidator implements X509CertChainValidatorExt
 	@Override
 	public void removeUpdateListener(StoreUpdateListener listener)
 	{
-	}
-
-	@Override
-	public ProxySupport getProxySupport()
-	{
-		return ProxySupport.ALLOW;
 	}
 
 	@Override

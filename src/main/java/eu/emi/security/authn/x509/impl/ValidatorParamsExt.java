@@ -7,7 +7,6 @@ package eu.emi.security.authn.x509.impl;
 import java.util.ArrayList;
 import java.util.Collection;
 
-import eu.emi.security.authn.x509.ProxySupport;
 import eu.emi.security.authn.x509.RevocationParameters;
 import eu.emi.security.authn.x509.StoreUpdateListener;
 import eu.emi.security.authn.x509.X509CertChainValidator;
@@ -23,37 +22,32 @@ public class ValidatorParamsExt extends ValidatorParams
 	protected RevocationParametersExt revocationSettings;
 	
 	/**
-	 * Default constructor: proxies are allowed, no initial update listeners,
-	 * default revocation settings.
+	 * Default constructor: no initial update listeners and default revocation settings.
 	 */
 	public ValidatorParamsExt()
 	{
-		this(new RevocationParametersExt(), ValidatorParams.DEFAULT_PROXY_SUPPORT, 
+		this(new RevocationParametersExt(),
 			new ArrayList<StoreUpdateListener>());
 	}
 
 	/**
-	 * Allows for setting all parameters except the list of initial listeners 
+	 * Allows for setting revocation parameters without initial listeners.
 	 * @param revocationSettings desired revocation settings
-	 * @param allowProxy whether to allow proxies
 	 */
-	public ValidatorParamsExt(RevocationParametersExt revocationSettings,
-			ProxySupport allowProxy)
+	public ValidatorParamsExt(RevocationParametersExt revocationSettings)
 	{
-		this(revocationSettings, allowProxy, new ArrayList<StoreUpdateListener>());
+		this(revocationSettings, new ArrayList<StoreUpdateListener>());
 	}
 	
 	/**
 	 * Full version, allows for setting all parameters.
 	 * @param revocationSettings desired revocation settings
-	 * @param allowProxy whether to allow proxies
 	 * @param initialListeners initial trust store update listeners
 	 */
 	public ValidatorParamsExt(RevocationParametersExt revocationSettings,
-			ProxySupport allowProxy,
 			Collection<? extends StoreUpdateListener> initialListeners)
 	{
-		super(revocationSettings, allowProxy, initialListeners);
+		super(revocationSettings, initialListeners);
 		setRevocationSettings(revocationSettings);
 	}
 
