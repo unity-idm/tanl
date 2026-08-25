@@ -151,6 +151,25 @@ The following helper signatures were removed or replaced:
   the same constructor without the boolean hash argument
 
 
+NATIVE PKIX BASE VALIDATION
+
+When both CRL and OCSP checking are disabled, certificate paths are now built
+and validated by the native Bouncy Castle PKIX CertPathBuilder and
+CertPathValidator selected explicitly from the BC provider.
+
+For X509Certificate array input, element zero is the target and the remaining
+elements are unordered path-building candidates. CertPath input is validated
+directly without rebuilding or reordering. An included trust-anchor
+certificate is removed before validation, while successful ValidationResult
+chains include the selected anchor. An exact configured, self-signed trust
+anchor is accepted as a one-certificate input.
+
+This intermediate stacked change deliberately leaves CRL- or OCSP-enabled
+validation on the existing revocation implementation. Native revocation and
+the final error/listener contract are migrated in subsequent changes; OCSP
+configuration and behavior remain available during that migration.
+
+
 2.x HISTORICAL CHANGES
 
 1) changed semantics of the DN compare methods operating on the string representation.

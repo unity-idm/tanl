@@ -63,6 +63,35 @@ public class ValidatorTestBase
 			Set<String> policies, CrlCheckingMode revocationSupport,
 			OCSPParametes ocspParams) throws Exception
 	{
+		ValidationResult result = validatePath(trustAnchorPrefix, trustAnchors,
+				trustAnchorSuffix, crlPrefix, crls, crlSuffix, toCheck,
+				revocationSupport, ocspParams);
+		List<ValidationError> errors = result.getErrors();
+		if (expectedErrors == Integer.MAX_VALUE)
+			assertTrue(errors.size() > 0);
+		else
+			assertEquals(expectedErrors, errors.size());
+	}
+
+	protected void doPathVerdictTest(
+			boolean expectedValid,
+			String trustAnchorPrefix, String[] trustAnchors, String trustAnchorSuffix,
+			String crlPrefix, String[] crls, String crlSuffix,
+			X509Certificate[] toCheck, CrlCheckingMode revocationSupport,
+			OCSPParametes ocspParams) throws Exception
+	{
+		ValidationResult result = validatePath(trustAnchorPrefix, trustAnchors,
+				trustAnchorSuffix, crlPrefix, crls, crlSuffix, toCheck,
+				revocationSupport, ocspParams);
+		assertEquals(result.toString(), expectedValid, result.isValid());
+	}
+
+	private ValidationResult validatePath(
+			String trustAnchorPrefix, String[] trustAnchors, String trustAnchorSuffix,
+			String crlPrefix, String[] crls, String crlSuffix,
+			X509Certificate[] toCheck, CrlCheckingMode revocationSupport,
+			OCSPParametes ocspParams) throws Exception
+	{
 		List<String> trustedLocations = new ArrayList<String>();
 		trustedLocations.addAll(resolvePaths(trustAnchorPrefix, trustAnchorSuffix, 
 				trustAnchors));
@@ -99,9 +128,14 @@ public class ValidatorTestBase
 				null, 
 				new ValidatorParamsExt(revocationParams, listeners));
 		
-		ValidationResult result = validator.validate(toCheck);
-		
-		List<ValidationError> errors = result.getErrors();
+		ValidationResult result;
+		try
+		{
+			result = validator.validate(toCheck);
+		} finally
+		{
+			validator.dispose();
+		}
 		
 		if (!result.isValid())
 		{
@@ -109,10 +143,6 @@ public class ValidatorTestBase
 			System.out.println("Result (full) : " + result);
 		}
 		
-		if (expectedErrors == Integer.MAX_VALUE)
-			assertTrue(errors.size() > 0);
-		else
-			assertEquals(expectedErrors, errors.size());
-		validator.dispose();
+		return result;
 	}	
 }

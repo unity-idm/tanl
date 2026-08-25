@@ -20,17 +20,45 @@ public class NISTValidator13_16Test extends NISTValidatorTestBase
 	private void convertToNist(int e, String[] a, String[] b)
 			throws Exception
 	{
+		convertToNist(e, a, b, false);
+	}
+
+	private void convertToNistRevocation(int e, String[] a, String[] b)
+			throws Exception
+	{
+		convertToNist(e, a, b, true);
+	}
+
+	private void convertToNist(int e, String[] a, String[] b, boolean revocation)
+			throws Exception
+	{
 		List<String> crls = new ArrayList<String>();
 		for (int i=1; i<a.length; i++)
 			crls.add(a[i]);
 		crls.add(TRUST_ANCHOR_ROOT_CRL);
 
-		nistTest(e, TRUST_ANCHOR_ROOT_CERTIFICATE, new String[] { b[0],
-				a[0] }, crls.toArray(new String[0]), null);
+		if (revocation)
+			nistRevocationTest(e, TRUST_ANCHOR_ROOT_CERTIFICATE,
+					new String[] { b[0], a[0] }, crls.toArray(new String[0]), null);
+		else
+			nistTest(e, TRUST_ANCHOR_ROOT_CERTIFICATE, new String[] { b[0],
+					a[0] }, crls.toArray(new String[0]), null);
 	}
 
 	private void convertToNist(int e, String[] a, String[] b, String[] c)
 			throws Exception
+	{
+		convertToNist(e, a, b, c, false);
+	}
+
+	private void convertToNistRevocation(int e, String[] a, String[] b, String[] c)
+			throws Exception
+	{
+		convertToNist(e, a, b, c, true);
+	}
+
+	private void convertToNist(int e, String[] a, String[] b, String[] c,
+			boolean revocation) throws Exception
 	{
 		List<String> crls = new ArrayList<String>();
 		for (int i=1; i<b.length; i++)
@@ -38,8 +66,12 @@ public class NISTValidator13_16Test extends NISTValidatorTestBase
 		for (int i=1; i<a.length; i++)
 			crls.add(a[i]);
 		crls.add(TRUST_ANCHOR_ROOT_CRL);
-		nistTest(e, TRUST_ANCHOR_ROOT_CERTIFICATE, new String[] { c[0],
-				b[0], a[0] }, crls.toArray(new String[0]), null);
+		if (revocation)
+			nistRevocationTest(e, TRUST_ANCHOR_ROOT_CERTIFICATE,
+					new String[] { c[0], b[0], a[0] }, crls.toArray(new String[0]), null);
+		else
+			nistTest(e, TRUST_ANCHOR_ROOT_CERTIFICATE, new String[] { c[0],
+					b[0], a[0] }, crls.toArray(new String[0]), null);
 	}
 
 	@Test
@@ -411,7 +443,7 @@ public class NISTValidator13_16Test extends NISTValidatorTestBase
 	@Test
 	public void test4_14_1() throws Exception
 	{
-		convertToNist(0,
+		convertToNistRevocation(0,
 				new String[] { "distributionPoint1CACert",
 						"distributionPoint1CACRL" },
 				new String[] { "ValiddistributionPointTest1EE" });
@@ -420,7 +452,7 @@ public class NISTValidator13_16Test extends NISTValidatorTestBase
 	@Test
 	public void test4_14_2() throws Exception
 	{
-		convertToNist(1,
+		convertToNistRevocation(1,
 				new String[] { "distributionPoint1CACert",
 						"distributionPoint1CACRL" },
 				new String[] { "InvaliddistributionPointTest2EE" });
@@ -429,7 +461,7 @@ public class NISTValidator13_16Test extends NISTValidatorTestBase
 	@Test
 	public void test4_14_3() throws Exception
 	{
-		convertToNist(1,
+		convertToNistRevocation(1,
 				new String[] { "distributionPoint1CACert",
 						"distributionPoint1CACRL" },
 				new String[] { "InvaliddistributionPointTest3EE" });
@@ -438,7 +470,7 @@ public class NISTValidator13_16Test extends NISTValidatorTestBase
 	@Test
 	public void test4_14_4() throws Exception
 	{
-		convertToNist(0,
+		convertToNistRevocation(0,
 				new String[] { "distributionPoint1CACert",
 						"distributionPoint1CACRL" },
 				new String[] { "ValiddistributionPointTest4EE" });
@@ -447,7 +479,7 @@ public class NISTValidator13_16Test extends NISTValidatorTestBase
 	@Test
 	public void test4_14_5() throws Exception
 	{
-		convertToNist(0,
+		convertToNistRevocation(0,
 				new String[] { "distributionPoint2CACert",
 						"distributionPoint2CACRL" },
 				new String[] { "ValiddistributionPointTest5EE" });
@@ -456,7 +488,7 @@ public class NISTValidator13_16Test extends NISTValidatorTestBase
 	@Test
 	public void test4_14_6() throws Exception
 	{
-		convertToNist(1,
+		convertToNistRevocation(1,
 				new String[] { "distributionPoint2CACert",
 						"distributionPoint2CACRL" },
 				new String[] { "InvaliddistributionPointTest6EE" });
@@ -465,7 +497,7 @@ public class NISTValidator13_16Test extends NISTValidatorTestBase
 	@Test
 	public void test4_14_7() throws Exception
 	{
-		convertToNist(0,
+		convertToNistRevocation(0,
 				new String[] { "distributionPoint2CACert",
 						"distributionPoint2CACRL" },
 				new String[] { "ValiddistributionPointTest7EE" });
@@ -474,7 +506,7 @@ public class NISTValidator13_16Test extends NISTValidatorTestBase
 	@Test
 	public void test4_14_8() throws Exception
 	{
-		convertToNist(1,
+		convertToNistRevocation(1,
 				new String[] { "distributionPoint2CACert",
 						"distributionPoint2CACRL" },
 				new String[] { "InvaliddistributionPointTest8EE" });
@@ -483,7 +515,7 @@ public class NISTValidator13_16Test extends NISTValidatorTestBase
 	@Test
 	public void test4_14_9() throws Exception
 	{
-		convertToNist(1,
+		convertToNistRevocation(1,
 				new String[] { "distributionPoint2CACert",
 						"distributionPoint2CACRL" },
 				new String[] { "InvaliddistributionPointTest9EE" });
@@ -492,7 +524,7 @@ public class NISTValidator13_16Test extends NISTValidatorTestBase
 	@Test
 	public void test4_14_10() throws Exception
 	{
-		convertToNist(0,
+		convertToNistRevocation(0,
 				new String[] {
 						"NoissuingDistributionPointCACert",
 						"NoissuingDistributionPointCACRL" },
@@ -502,7 +534,7 @@ public class NISTValidator13_16Test extends NISTValidatorTestBase
 	@Test
 	public void test4_14_11() throws Exception
 	{
-		convertToNist(1,
+		convertToNistRevocation(1,
 				new String[] { "onlyContainsUserCertsCACert",
 						"onlyContainsUserCertsCACRL" },
 				new String[] { "InvalidonlyContainsUserCertsTest11EE" });
@@ -511,7 +543,7 @@ public class NISTValidator13_16Test extends NISTValidatorTestBase
 	@Test
 	public void test4_14_12() throws Exception
 	{
-		convertToNist(1,
+		convertToNistRevocation(1,
 				new String[] { "onlyContainsCACertsCACert",
 						"onlyContainsCACertsCACRL" },
 				new String[] { "InvalidonlyContainsCACertsTest12EE" });
@@ -520,7 +552,7 @@ public class NISTValidator13_16Test extends NISTValidatorTestBase
 	@Test
 	public void test4_14_13() throws Exception
 	{
-		convertToNist(0,
+		convertToNistRevocation(0,
 				new String[] { "onlyContainsCACertsCACert",
 						"onlyContainsCACertsCACRL" },
 				new String[] { "ValidonlyContainsCACertsTest13EE" });
@@ -529,7 +561,7 @@ public class NISTValidator13_16Test extends NISTValidatorTestBase
 	@Test
 	public void test4_14_14() throws Exception
 	{
-		convertToNist(1,
+		convertToNistRevocation(1,
 				new String[] {
 						"onlyContainsAttributeCertsCACert",
 						"onlyContainsAttributeCertsCACRL" },
@@ -539,7 +571,7 @@ public class NISTValidator13_16Test extends NISTValidatorTestBase
 	@Test
 	public void test4_14_15() throws Exception
 	{
-		convertToNist(1,
+		convertToNistRevocation(1,
 				new String[] {
 						"onlySomeReasonsCA1Cert",
 						"onlySomeReasonsCA1compromiseCRL",
@@ -550,7 +582,7 @@ public class NISTValidator13_16Test extends NISTValidatorTestBase
 	@Test
 	public void test4_14_16() throws Exception
 	{
-		convertToNist(1,
+		convertToNistRevocation(1,
 				new String[] {
 						"onlySomeReasonsCA1Cert",
 						"onlySomeReasonsCA1compromiseCRL",
@@ -561,7 +593,7 @@ public class NISTValidator13_16Test extends NISTValidatorTestBase
 	@Test
 	public void test4_14_17() throws Exception
 	{
-		convertToNist(1,
+		convertToNistRevocation(1,
 				new String[] { "onlySomeReasonsCA2Cert",
 						"onlySomeReasonsCA2CRL1",
 						"onlySomeReasonsCA2CRL2" },
@@ -571,7 +603,7 @@ public class NISTValidator13_16Test extends NISTValidatorTestBase
 	@Test
 	public void test4_14_18() throws Exception
 	{
-		convertToNist(0, new String[] { "onlySomeReasonsCA3Cert",
+		convertToNistRevocation(0, new String[] { "onlySomeReasonsCA3Cert",
 				"onlySomeReasonsCA3compromiseCRL", 
 				"onlySomeReasonsCA3otherreasonsCRL" },
 				new String[] { "ValidonlySomeReasonsTest18EE" });
@@ -580,7 +612,7 @@ public class NISTValidator13_16Test extends NISTValidatorTestBase
 	@Test
 	public void test4_14_19() throws Exception
 	{
-		convertToNist(0, new String[] { "onlySomeReasonsCA4Cert",
+		convertToNistRevocation(0, new String[] { "onlySomeReasonsCA4Cert",
 				"onlySomeReasonsCA4compromiseCRL",
 				"onlySomeReasonsCA4otherreasonsCRL" },
 				new String[] { "ValidonlySomeReasonsTest19EE" });
@@ -589,7 +621,7 @@ public class NISTValidator13_16Test extends NISTValidatorTestBase
 	@Test
 	public void test4_14_20() throws Exception
 	{
-		convertToNist(1,
+		convertToNistRevocation(1,
 				new String[] {
 						"onlySomeReasonsCA4Cert",
 						"onlySomeReasonsCA4compromiseCRL",
@@ -600,7 +632,7 @@ public class NISTValidator13_16Test extends NISTValidatorTestBase
 	@Test
 	public void test4_14_21() throws Exception
 	{
-		convertToNist(1,
+		convertToNistRevocation(1,
 				new String[] {
 						"onlySomeReasonsCA4Cert",
 						"onlySomeReasonsCA4compromiseCRL",
@@ -611,7 +643,7 @@ public class NISTValidator13_16Test extends NISTValidatorTestBase
 	@Test
 	public void test4_14_22() throws Exception
 	{
-		convertToNist(0,
+		convertToNistRevocation(0,
 				new String[] { "indirectCRLCA1Cert",
 						"indirectCRLCA1CRL" },
 				new String[] { "ValidIDPwithindirectCRLTest22EE" });
@@ -620,7 +652,7 @@ public class NISTValidator13_16Test extends NISTValidatorTestBase
 	@Test
 	public void test4_14_23() throws Exception
 	{
-		convertToNist(1,
+		convertToNistRevocation(1,
 				new String[] { "indirectCRLCA1Cert",
 						"indirectCRLCA1CRL" },
 				new String[] { "InvalidIDPwithindirectCRLTest23EE" });
@@ -629,7 +661,7 @@ public class NISTValidator13_16Test extends NISTValidatorTestBase
 	@Test
 	public void test4_14_24() throws Exception
 	{
-		convertToNist(0,
+		convertToNistRevocation(0,
 				new String[] { "indirectCRLCA2Cert" },
 				new String[] { "indirectCRLCA1Cert",
 						"indirectCRLCA1CRL" },
@@ -639,7 +671,7 @@ public class NISTValidator13_16Test extends NISTValidatorTestBase
 	@Test
 	public void test4_14_25() throws Exception
 	{
-		convertToNist(0,
+		convertToNistRevocation(0,
 				new String[] { "indirectCRLCA2Cert" },
 				new String[] { "indirectCRLCA1Cert",
 						"indirectCRLCA1CRL" },
@@ -649,7 +681,7 @@ public class NISTValidator13_16Test extends NISTValidatorTestBase
 	@Test
 	public void test4_14_26() throws Exception
 	{
-		convertToNist(1,
+		convertToNistRevocation(1,
 				new String[] { "indirectCRLCA2Cert" },
 				new String[] { "indirectCRLCA1Cert",
 						"indirectCRLCA1CRL" },
@@ -659,7 +691,7 @@ public class NISTValidator13_16Test extends NISTValidatorTestBase
 	@Test
 	public void test4_14_27() throws Exception
 	{
-		convertToNist(1, new String[] { "indirectCRLCA2Cert" },
+		convertToNistRevocation(1, new String[] { "indirectCRLCA2Cert" },
 				new String[] { "GoodCACert", "GoodCACRL" },
 				new String[] { "InvalidcRLIssuerTest27EE" });
 	}
@@ -667,7 +699,7 @@ public class NISTValidator13_16Test extends NISTValidatorTestBase
 	@Test
 	public void test4_14_28() throws Exception
 	{
-		convertToNist(0, new String[] { "indirectCRLCA3Cert",
+		convertToNistRevocation(0, new String[] { "indirectCRLCA3Cert",
 				"indirectCRLCA3CRL" }, new String[] {
 				"indirectCRLCA3cRLIssuerCert",
 				"indirectCRLCA3cRLIssuerCRL" },
@@ -677,7 +709,7 @@ public class NISTValidator13_16Test extends NISTValidatorTestBase
 	@Test
 	public void test4_14_29() throws Exception
 	{
-		convertToNist(0, new String[] { "indirectCRLCA3Cert",
+		convertToNistRevocation(0, new String[] { "indirectCRLCA3Cert",
 				"indirectCRLCA3CRL" }, new String[] {
 				"indirectCRLCA3cRLIssuerCert",
 				"indirectCRLCA3cRLIssuerCRL" },
@@ -687,7 +719,7 @@ public class NISTValidator13_16Test extends NISTValidatorTestBase
 	@Test
 	public void test4_14_30() throws Exception
 	{
-		convertToNist(0, new String[] { "indirectCRLCA4Cert" }, new String[] {
+		convertToNistRevocation(0, new String[] { "indirectCRLCA4Cert" }, new String[] {
 				"indirectCRLCA4cRLIssuerCert",
 				"indirectCRLCA4cRLIssuerCRL" },
 				new String[] { "ValidcRLIssuerTest30EE" });
@@ -696,7 +728,7 @@ public class NISTValidator13_16Test extends NISTValidatorTestBase
 	@Test
 	public void test4_14_31() throws Exception
 	{
-		convertToNist(1, new String[] { "indirectCRLCA5Cert",
+		convertToNistRevocation(1, new String[] { "indirectCRLCA5Cert",
 				"indirectCRLCA5CRL" },
 				new String[] { "indirectCRLCA6Cert" },
 				new String[] { "InvalidcRLIssuerTest31EE" });
@@ -705,7 +737,7 @@ public class NISTValidator13_16Test extends NISTValidatorTestBase
 	@Test
 	public void test4_14_32() throws Exception
 	{
-		convertToNist(1, new String[] { "indirectCRLCA5Cert",
+		convertToNistRevocation(1, new String[] { "indirectCRLCA5Cert",
 				"indirectCRLCA5CRL" },
 				new String[] { "indirectCRLCA6Cert" },
 				new String[] { "InvalidcRLIssuerTest32EE" });
@@ -714,7 +746,7 @@ public class NISTValidator13_16Test extends NISTValidatorTestBase
 	@Test
 	public void test4_14_33() throws Exception
 	{
-		convertToNist(0, new String[] { "indirectCRLCA5Cert",
+		convertToNistRevocation(0, new String[] { "indirectCRLCA5Cert",
 				"indirectCRLCA5CRL" },
 				new String[] { "indirectCRLCA6Cert" },
 				new String[] { "ValidcRLIssuerTest33EE" });
@@ -723,7 +755,7 @@ public class NISTValidator13_16Test extends NISTValidatorTestBase
 	@Test
 	public void test4_14_34() throws Exception
 	{
-		convertToNist(1, new String[] { "indirectCRLCA5Cert",
+		convertToNistRevocation(1, new String[] { "indirectCRLCA5Cert",
 				"indirectCRLCA5CRL" },
 				new String[] { "InvalidcRLIssuerTest34EE" });
 	}
@@ -731,7 +763,7 @@ public class NISTValidator13_16Test extends NISTValidatorTestBase
 	@Test
 	public void test4_14_35() throws Exception
 	{
-		convertToNist(1, new String[] { "indirectCRLCA5Cert",
+		convertToNistRevocation(1, new String[] { "indirectCRLCA5Cert",
 				"indirectCRLCA5CRL" },
 				new String[] { "InvalidcRLIssuerTest35EE" });
 	}
@@ -741,7 +773,7 @@ public class NISTValidator13_16Test extends NISTValidatorTestBase
 	@Test
 	public void test4_15_1() throws Exception
 	{
-		convertToNist(1,				
+		convertToNistRevocation(1,
 				new String[] { "deltaCRLIndicatorNoBaseCACert", "deltaCRLIndicatorNoBaseCACRL"},
 				new String[] { "InvaliddeltaCRLIndicatorNoBaseTest1EE"});
 	}
@@ -749,7 +781,7 @@ public class NISTValidator13_16Test extends NISTValidatorTestBase
 	@Test
 	public void test4_15_2() throws Exception
 	{
-		convertToNist(0,				
+		convertToNistRevocation(0,
 				new String[] { "deltaCRLCA1Cert", "deltaCRLCA1CRL", "deltaCRLCA1deltaCRL"},
 				new String[] { "ValiddeltaCRLTest2EE"});
 	}
@@ -757,7 +789,7 @@ public class NISTValidator13_16Test extends NISTValidatorTestBase
 	@Test
 	public void test4_15_3() throws Exception
 	{
-		convertToNist(1,				
+		convertToNistRevocation(1,
 				new String[] { "deltaCRLCA1Cert", "deltaCRLCA1CRL", "deltaCRLCA1deltaCRL"},
 				new String[] { "InvaliddeltaCRLTest3EE"});
 	}
@@ -765,7 +797,7 @@ public class NISTValidator13_16Test extends NISTValidatorTestBase
 	@Test
 	public void test4_15_4() throws Exception
 	{
-		convertToNist(1,				
+		convertToNistRevocation(1,
 				new String[] { "deltaCRLCA1Cert", "deltaCRLCA1CRL", "deltaCRLCA1deltaCRL"},
 				new String[] { "InvaliddeltaCRLTest4EE"});
 	}
@@ -773,7 +805,7 @@ public class NISTValidator13_16Test extends NISTValidatorTestBase
 	@Test
 	public void test4_15_5() throws Exception
 	{
-		convertToNist(0,				
+		convertToNistRevocation(0,
 				new String[] { "deltaCRLCA1Cert", "deltaCRLCA1CRL", "deltaCRLCA1deltaCRL"},
 				new String[] { "ValiddeltaCRLTest5EE"});
 	}
@@ -781,7 +813,7 @@ public class NISTValidator13_16Test extends NISTValidatorTestBase
 	@Test
 	public void test4_15_6() throws Exception
 	{
-		convertToNist(1,				
+		convertToNistRevocation(1,
 				new String[] { "deltaCRLCA1Cert", "deltaCRLCA1CRL", "deltaCRLCA1deltaCRL"},
 				new String[] { "InvaliddeltaCRLTest6EE"});
 	}
@@ -789,7 +821,7 @@ public class NISTValidator13_16Test extends NISTValidatorTestBase
 	@Test
 	public void test4_15_7() throws Exception
 	{
-		convertToNist(0,				
+		convertToNistRevocation(0,
 				new String[] { "deltaCRLCA1Cert", "deltaCRLCA1CRL", "deltaCRLCA1deltaCRL"},
 				new String[] { "ValiddeltaCRLTest7EE"});
 	}
@@ -797,7 +829,7 @@ public class NISTValidator13_16Test extends NISTValidatorTestBase
 	@Test
 	public void test4_15_8() throws Exception
 	{
-		convertToNist(0,				
+		convertToNistRevocation(0,
 				new String[] { "deltaCRLCA2Cert", "deltaCRLCA2CRL", "deltaCRLCA2deltaCRL"},
 				new String[] { "ValiddeltaCRLTest8EE"});
 	}
@@ -805,7 +837,7 @@ public class NISTValidator13_16Test extends NISTValidatorTestBase
 	@Test
 	public void test4_15_9() throws Exception
 	{
-		convertToNist(1,				
+		convertToNistRevocation(1,
 				new String[] { "deltaCRLCA2Cert", "deltaCRLCA2CRL", "deltaCRLCA2deltaCRL"},
 				new String[] { "InvaliddeltaCRLTest9EE"});
 	}
@@ -813,7 +845,7 @@ public class NISTValidator13_16Test extends NISTValidatorTestBase
 	@Test
 	public void test4_15_10() throws Exception
 	{
-		convertToNist(1,				
+		convertToNistRevocation(1,
 				new String[] { "deltaCRLCA3Cert", "deltaCRLCA3CRL", "deltaCRLCA3deltaCRL"},
 				new String[] { "InvaliddeltaCRLTest10EE"});
 	}

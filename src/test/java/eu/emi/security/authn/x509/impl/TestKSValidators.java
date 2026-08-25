@@ -148,19 +148,19 @@ public class TestKSValidators
 		vError = 0;
 		ValidationResult res = validator1.validate(toValidate);
 		assertFalse(res.isValid());
-		assertEquals(2, vError);
+		assertEquals(1, vError);
 		
 		validator1.addValidationListener(l2);
 		vError = 0;
 		ValidationResult res1 = validator1.validate(toValidate);
 		assertTrue(res1.getErrors().toString(), res1.isValid());
-		assertEquals(4, vError);
+		assertEquals(2, vError);
 		
 		validator1.removeValidationListener(l1);
 		vError = 0;
 		ValidationResult res2 = validator1.validate(toValidate);
 		assertTrue(res2.isValid());
-		assertEquals(2, vError);
+		assertEquals(1, vError);
 		
 		validator1.dispose();
 	}
