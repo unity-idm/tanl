@@ -6,6 +6,7 @@ package eu.emi.security.authn.x509.helpers.pkipath;
 
 import java.security.GeneralSecurityException;
 import java.security.InvalidAlgorithmParameterException;
+import java.security.SignatureException;
 import java.security.cert.CertPath;
 import java.security.cert.CertPathBuilder;
 import java.security.cert.CertPathBuilderException;
@@ -15,7 +16,9 @@ import java.security.cert.CertPathValidatorException.BasicReason;
 import java.security.cert.CertStore;
 import java.security.cert.Certificate;
 import java.security.cert.CertificateException;
+import java.security.cert.CertificateExpiredException;
 import java.security.cert.CertificateFactory;
+import java.security.cert.CertificateNotYetValidException;
 import java.security.cert.CollectionCertStoreParameters;
 import java.security.cert.PKIXBuilderParameters;
 import java.security.cert.PKIXCertPathBuilderResult;
@@ -37,6 +40,7 @@ import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import eu.emi.security.authn.x509.ValidationError;
 import eu.emi.security.authn.x509.ValidationErrorCode;
 import eu.emi.security.authn.x509.ValidationResult;
+import eu.emi.security.authn.x509.ValidationStage;
 import eu.emi.security.authn.x509.impl.CertificateUtils;
 
 /**
@@ -62,10 +66,12 @@ final class NativeBCPKIXValidator
 	ValidationResult validate(X509Certificate[] input, Set<TrustAnchor> configuredAnchors)
 			throws CertificateException
 	{
-		checkInput(input);
+		ValidationResult inputFailure = checkInput(input);
+		if (inputFailure != null)
+			return inputFailure;
 		Set<TrustAnchor> anchors = copyAnchors(configuredAnchors);
 		if (anchors.isEmpty())
-			return invalid(input, -1, ValidationErrorCode.noTrustAnchorFound);
+			return noTrustAnchor(input, ValidationStage.PATH_BUILDING);
 
 		TrustAnchor exactTargetAnchor = findExactAnchor(input[0], anchors);
 		if (exactTargetAnchor != null)
@@ -76,7 +82,7 @@ final class NativeBCPKIXValidator
 			// configured as an anchor. It may still build to a different anchor.
 			anchors.remove(exactTargetAnchor);
 			if (anchors.isEmpty())
-				return invalid(input, -1, ValidationErrorCode.noTrustAnchorFound);
+				return noTrustAnchor(input, ValidationStage.PATH_BUILDING);
 		}
 
 		try
@@ -85,15 +91,17 @@ final class NativeBCPKIXValidator
 			// CertPathBuilder performs validation itself. Validate once more with
 			// the selected anchor so both native entry points remain explicit.
 			return validatePath(built.getCertPath(),
-					Collections.singleton(built.getTrustAnchor()), input);
+					Collections.singleton(built.getTrustAnchor()));
 		} catch (CertPathBuilderException e)
 		{
 			List<X509Certificate> asserted = normalize(Arrays.asList(input), anchors);
 			if (asserted.isEmpty())
-				return invalid(input, -1, ValidationErrorCode.noTrustAnchorFound, e);
+				return invalid(input, -1, ValidationErrorCode.PATH_BUILDING_FAILED,
+						ValidationStage.PATH_BUILDING, e);
 			if (isCoherent(asserted))
-				return validatePath(toCertPath(asserted), anchors, input);
-			return invalid(input, -1, ValidationErrorCode.noTrustAnchorFound, e);
+				return validatePath(toCertPath(asserted), anchors);
+			return invalid(input, -1, ValidationErrorCode.PATH_BUILDING_FAILED,
+					ValidationStage.PATH_BUILDING, e);
 		} catch (InvalidAlgorithmParameterException e)
 		{
 			throw new IllegalStateException("Native BC PKIX builder rejected its parameters", e);
@@ -109,15 +117,23 @@ final class NativeBCPKIXValidator
 			throws CertificateException
 	{
 		if (suppliedPath == null)
-			throw new IllegalArgumentException("Certificate path must not be null");
-		List<X509Certificate> supplied = toX509Certificates(suppliedPath);
+			return invalidInput(null, -1, "Certificate path must not be null");
+		List<X509Certificate> supplied;
+		try
+		{
+			supplied = toX509Certificates(suppliedPath);
+		} catch (IllegalArgumentException e)
+		{
+			return invalid(null, -1, ValidationErrorCode.INVALID_INPUT,
+					ValidationStage.INPUT, e);
+		}
 		X509Certificate[] diagnosticChain = supplied.toArray(new X509Certificate[supplied.size()]);
 		if (supplied.isEmpty())
-			return invalid(diagnosticChain, -1, ValidationErrorCode.emptyCertPath);
+			return invalidInput(diagnosticChain, -1, "Certificate path must not be empty");
 
 		Set<TrustAnchor> anchors = copyAnchors(configuredAnchors);
 		if (anchors.isEmpty())
-			return invalid(diagnosticChain, -1, ValidationErrorCode.noTrustAnchorFound);
+			return noTrustAnchor(diagnosticChain, ValidationStage.PATH_VALIDATION);
 
 		List<X509Certificate> normalized = normalize(supplied, anchors);
 		if (normalized.isEmpty())
@@ -125,9 +141,9 @@ final class NativeBCPKIXValidator
 			X509Certificate target = supplied.get(0);
 			if (supplied.size() == 1 && findExactAnchor(target, anchors) != null && isSelfSigned(target))
 				return valid(Collections.singletonList(target));
-			return invalid(diagnosticChain, -1, ValidationErrorCode.noTrustAnchorFound);
+			return noTrustAnchor(diagnosticChain, ValidationStage.PATH_VALIDATION);
 		}
-		return validatePath(toCertPath(normalized), anchors, diagnosticChain);
+		return validatePath(toCertPath(normalized), anchors);
 	}
 
 	private PKIXCertPathBuilderResult build(X509Certificate[] input, Set<TrustAnchor> anchors)
@@ -142,9 +158,9 @@ final class NativeBCPKIXValidator
 		return (PKIXCertPathBuilderResult) certPathBuilder().build(params);
 	}
 
-	private ValidationResult validatePath(CertPath path, Set<TrustAnchor> anchors,
-			X509Certificate[] diagnosticChain)
+	private ValidationResult validatePath(CertPath path, Set<TrustAnchor> anchors)
 	{
+		X509Certificate[] diagnosticChain = pathCertificates(path);
 		try
 		{
 			PKIXParameters params = new PKIXParameters(anchors);
@@ -162,7 +178,8 @@ final class NativeBCPKIXValidator
 		{
 			// Malformed signature encodings can surface as provider runtime
 			// exceptions rather than CertPathValidatorException.
-			return invalid(diagnosticChain, -1, ValidationErrorCode.unknownMsg, e);
+			return invalid(diagnosticChain, -1, ValidationErrorCode.PKIX_FAILURE,
+					ValidationStage.PATH_VALIDATION, e);
 		}
 	}
 
@@ -170,32 +187,78 @@ final class NativeBCPKIXValidator
 			CertPathValidatorException failure)
 	{
 		int position = failure.getIndex();
-		if (position < 0 || position >= chain.length)
+		if (position < 0 || chain == null || position >= chain.length)
 			position = -1;
 
 		CertPathValidatorException.Reason reason = failure.getReason();
-		if (reason == BasicReason.EXPIRED && position >= 0)
-			return invalid(chain, position, ValidationErrorCode.certificateExpired,
-					chain[position].getNotAfter());
-		if (reason == BasicReason.NOT_YET_VALID && position >= 0)
-			return invalid(chain, position, ValidationErrorCode.certificateNotYetValid,
-					chain[position].getNotBefore());
-		if (reason == BasicReason.INVALID_SIGNATURE)
-			return invalid(chain, position, ValidationErrorCode.signatureNotVerified, failure);
+		if (reason == BasicReason.EXPIRED ||
+				hasCause(failure, CertificateExpiredException.class))
+			return invalid(chain, position, ValidationErrorCode.CERTIFICATE_EXPIRED,
+					ValidationStage.PATH_VALIDATION, failure);
+		if (reason == BasicReason.NOT_YET_VALID ||
+				hasCause(failure, CertificateNotYetValidException.class))
+			return invalid(chain, position, ValidationErrorCode.CERTIFICATE_NOT_YET_VALID,
+					ValidationStage.PATH_VALIDATION, failure);
+		if (reason == BasicReason.INVALID_SIGNATURE ||
+				hasCause(failure, SignatureException.class))
+			return invalid(chain, position, ValidationErrorCode.INVALID_SIGNATURE,
+					ValidationStage.PATH_VALIDATION, failure);
+		if (reason == BasicReason.ALGORITHM_CONSTRAINED)
+			return invalid(chain, position, ValidationErrorCode.ALGORITHM_CONSTRAINED,
+					ValidationStage.PATH_VALIDATION, failure);
+		if (reason == BasicReason.REVOKED)
+			return invalid(chain, position, ValidationErrorCode.CERTIFICATE_REVOKED,
+					ValidationStage.REVOCATION, failure);
+		if (reason == BasicReason.UNDETERMINED_REVOCATION_STATUS)
+			return invalid(chain, position, ValidationErrorCode.UNDETERMINED_REVOCATION_STATUS,
+					ValidationStage.REVOCATION, failure);
 		if (reason == PKIXReason.NOT_CA_CERT)
-			return invalid(chain, position, ValidationErrorCode.noCACert, failure);
+			return invalid(chain, position, ValidationErrorCode.NOT_CA,
+					ValidationStage.PATH_VALIDATION, failure);
 		if (reason == PKIXReason.INVALID_KEY_USAGE)
-			return invalid(chain, position, ValidationErrorCode.noCertSign, failure);
+			return invalid(chain, position, ValidationErrorCode.INVALID_KEY_USAGE,
+					ValidationStage.PATH_VALIDATION, failure);
 		if (reason == PKIXReason.PATH_TOO_LONG)
-			return invalid(chain, position, ValidationErrorCode.pathLenghtExtended, failure);
-		if (reason == PKIXReason.NAME_CHAINING || reason == PKIXReason.INVALID_NAME)
-			return invalid(chain, position, ValidationErrorCode.invalidCertificatePath, failure);
+			return invalid(chain, position, ValidationErrorCode.PATH_TOO_LONG,
+					ValidationStage.PATH_VALIDATION, failure);
+		if (reason == PKIXReason.NAME_CHAINING)
+			return invalid(chain, position, ValidationErrorCode.INVALID_NAME_CHAINING,
+					ValidationStage.PATH_VALIDATION, failure);
+		if (reason == PKIXReason.INVALID_NAME)
+			return invalid(chain, position, ValidationErrorCode.INVALID_NAME_CONSTRAINT,
+					ValidationStage.PATH_VALIDATION, failure);
+		if (reason == PKIXReason.INVALID_POLICY)
+			return invalid(chain, position, ValidationErrorCode.INVALID_POLICY,
+					ValidationStage.PATH_VALIDATION, failure);
 		if (reason == PKIXReason.NO_TRUST_ANCHOR)
-			return invalid(chain, position, ValidationErrorCode.noTrustAnchorFound, failure);
+			return invalid(chain, position, ValidationErrorCode.NO_TRUST_ANCHOR,
+					ValidationStage.PATH_VALIDATION, failure);
 		if (reason == PKIXReason.UNRECOGNIZED_CRIT_EXT)
-			return invalid(chain, position, ValidationErrorCode.unknownCriticalExt,
-					"OID not exposed by the provider");
-		return invalid(chain, position, ValidationErrorCode.unknownMsg, failure);
+			return invalid(chain, position, ValidationErrorCode.UNRESOLVED_CRITICAL_EXTENSION,
+					ValidationStage.PATH_VALIDATION, failure);
+		return invalid(chain, position, ValidationErrorCode.PKIX_FAILURE,
+				ValidationStage.PATH_VALIDATION, failure);
+	}
+
+	private boolean hasCause(Throwable failure, Class<? extends Throwable> expected)
+	{
+		Throwable current = failure;
+		while (current != null)
+		{
+			if (expected.isInstance(current))
+				return true;
+			current = current.getCause();
+		}
+		return false;
+	}
+
+	private X509Certificate[] pathCertificates(CertPath path)
+	{
+		List<? extends Certificate> certificates = path.getCertificates();
+		X509Certificate[] result = new X509Certificate[certificates.size()];
+		for (int i=0; i<result.length; i++)
+			result[i] = (X509Certificate) certificates.get(i);
+		return result;
 	}
 
 	private List<X509Certificate> resolvedChain(CertPath path, TrustAnchor anchor)
@@ -250,13 +313,17 @@ final class NativeBCPKIXValidator
 		}
 	}
 
-	private void checkInput(X509Certificate[] input)
+	private ValidationResult checkInput(X509Certificate[] input)
 	{
-		if (input == null || input.length == 0)
-			throw new IllegalArgumentException("Chain to be validated must be non-empty");
-		for (X509Certificate certificate: input)
-			if (certificate == null)
-				throw new IllegalArgumentException("Certificate chain must not contain null elements");
+		if (input == null)
+			return invalidInput(null, -1, "Certificate chain must not be null");
+		if (input.length == 0)
+			return invalidInput(input, -1, "Certificate chain must not be empty");
+		for (int i=0; i<input.length; i++)
+			if (input[i] == null)
+				return invalidInput(input, i,
+						"Certificate chain must not contain null elements");
+		return null;
 	}
 
 	private List<X509Certificate> toX509Certificates(CertPath path)
@@ -324,15 +391,31 @@ final class NativeBCPKIXValidator
 
 	private ValidationResult valid(List<X509Certificate> chain)
 	{
-		return new ValidationResult(true, Collections.<ValidationError>emptyList(),
-				Collections.<String>emptySet(), chain);
+		return ValidationResult.valid(chain);
 	}
 
 	private ValidationResult invalid(X509Certificate[] chain, int position,
-			ValidationErrorCode code, Object... arguments)
+			ValidationErrorCode code, ValidationStage stage, Throwable cause)
 	{
-		ValidationError error = new ValidationError(chain, position, code, arguments);
-		return new ValidationResult(false, Collections.singletonList(error),
-				Collections.<String>emptySet(), null);
+		String providerMessage = cause == null ? null : cause.getMessage();
+		ValidationError error = new ValidationError(chain, position, code, stage,
+				providerMessage, cause);
+		return ValidationResult.invalid(error);
+	}
+
+	private ValidationResult invalidInput(X509Certificate[] chain, int position,
+			String message)
+	{
+		return invalid(chain, position, ValidationErrorCode.INVALID_INPUT,
+				ValidationStage.INPUT, new IllegalArgumentException(message));
+	}
+
+	private ValidationResult noTrustAnchor(X509Certificate[] chain, ValidationStage stage)
+	{
+		Throwable failure = stage == ValidationStage.PATH_BUILDING ?
+				new CertPathBuilderException("No trust anchors are configured") :
+				new CertPathValidatorException("No trust anchors are configured", null,
+						null, -1, PKIXReason.NO_TRUST_ANCHOR);
+		return invalid(chain, -1, ValidationErrorCode.NO_TRUST_ANCHOR, stage, failure);
 	}
 }

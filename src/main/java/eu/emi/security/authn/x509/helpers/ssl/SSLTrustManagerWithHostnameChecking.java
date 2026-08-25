@@ -57,14 +57,7 @@ public class SSLTrustManagerWithHostnameChecking extends X509ExtendedTrustManage
 	{
 		ValidationResult result = validator.validate(certChain);
 		if (!result.isValid())
-		{
-			result.toString();
-			String subject = "";
-			if (certChain != null && certChain.length > 0)
-				subject = certChain[0].getSubjectX500Principal().getName();
-			throw new CertificateException("The peer's certificate with subject's DN " + subject
-					+ " was rejected. The peer's certificate status is: " + result.toString());
-		}
+			throw SSLTrustManager.validationException(certChain, result);
 	}
 	
 	@Override
