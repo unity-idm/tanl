@@ -11,5 +11,9 @@ SSL/TLS connections and validating certificate chains.
 	The library manual, including the functional description, programmer's guide, and
 examples, is maintained as +src/main/doc/manual.txt+ in the source repository.
 
+	The {{{https://github.com/unity-idm/tanl/blob/master/docs/migration-guide.md}native-PKIX
+migration guide}}, including revocation configuration and modern OpenSSL trust-store
+examples, is maintained in the source repository.
+
 	The API documentation is available in Javadoc format. It is linked under 
 the ''Project Reports'' section in the left menu.

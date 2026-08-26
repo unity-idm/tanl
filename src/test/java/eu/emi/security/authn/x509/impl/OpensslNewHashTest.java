@@ -23,7 +23,8 @@ public class OpensslNewHashTest
 	@Test
 	public void test() throws Exception
 	{
-		X500Principal subject = new X500Principal("  CN=Polish    Grid CA,O=GRID,C=PL   ");
+		X500Principal subject = new X500Principal(
+				"  CN=Example    Hash CA,O=Example,C=EX   ");
 		RDN[] c19nrdns = OpensslTruststoreHelper.getNormalizedRDNs(subject);
 
 		X500Name newName = new X500Name(c19nrdns);
@@ -31,6 +32,6 @@ public class OpensslNewHashTest
 		System.out.println("After: '" + newSubject.getName() +"'");
 		String hash = OpensslTruststoreHelper.getOpenSSLCAHash(subject);
 		System.out.println("hash: " + hash);
-		Assert.assertEquals("03b260e0", hash);
+		Assert.assertEquals("b3bac5a6", hash);
 	}
 }

@@ -29,6 +29,8 @@ mvn clean test
 Tests categorized as risky integration tests can be run with
 `mvn -PriskyTests test`.
 
-See `src/main/doc/manual.txt` for the user guide, `API-Changes.txt` for
-migration notes, and `docs/changes/` for the validation-modernization design
-record. Licensing and retained upstream attribution are in `LICENSE.txt`.
+See `src/main/doc/manual.txt` for the user guide,
+`docs/migration-guide.md` for construction and revocation migration examples,
+`API-Changes.txt` for the exhaustive compatibility notes, and `docs/changes/`
+for the validation-modernization design record. Licensing and retained
+upstream attribution are in `LICENSE.txt`.

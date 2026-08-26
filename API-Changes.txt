@@ -708,6 +708,21 @@ names are intentionally unchanged pending a separately approved publication
 identity.
 
 
+FINAL VERIFICATION AND MIGRATION GUIDE
+
+The retained TLS adapter behavior is covered with real valid, untrusted,
+expired, revoked, and unsupported-critical-extension chains. Invalid TLS
+chains retain the native primary validation exception as the
+CertificateException cause.
+
+docs/migration-guide.md provides current examples for lazy and eager
+OpensslCertChainValidator construction, CRL and OCSP policy selection,
+responder ordering and useAllEnabled, immutable primary-error handling, and
+the modern OpenSSL certificate and CRL hash layout. The compatibility breaks
+listed above are the complete intentional removals for this modernization;
+OCSP support remains part of the public validator configuration and runtime.
+
+
 2.x HISTORICAL CHANGES
 
 1) changed semantics of the DN compare methods operating on the string representation.
