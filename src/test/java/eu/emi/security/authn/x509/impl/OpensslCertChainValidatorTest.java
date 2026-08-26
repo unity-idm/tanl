@@ -67,7 +67,11 @@ import com.sun.net.httpserver.HttpServer;
 
 import org.bouncycastle.asn1.ASN1ObjectIdentifier;
 import org.bouncycastle.asn1.x500.X500Name;
+import org.bouncycastle.asn1.x509.AccessDescription;
+import org.bouncycastle.asn1.x509.AuthorityInformationAccess;
 import org.bouncycastle.asn1.x509.BasicConstraints;
+import org.bouncycastle.asn1.x509.Extension;
+import org.bouncycastle.asn1.x509.GeneralName;
 import org.bouncycastle.cert.CertIOException;
 import org.bouncycastle.cert.X509CertificateHolder;
 import org.bouncycastle.cert.X509v2CRLBuilder;
@@ -420,8 +424,67 @@ public class OpensslCertChainValidatorTest
 				is(ValidationErrorCode.ocspResponderQueryError));
 	}
 
+	@Test
+	public void shouldUseNativeValidationForOneDiscoveredRequiredOCSPResponder()
+			throws Exception {
+		CA rootCA = given(aCertificateAuthority()
+				.selfSigned()
+				.withName("DC=org, DC=example, CN=discovered OCSP root CA"));
+		given(anOpensslTrustStore().trustingCA(rootCA));
+		URL responder = startMalformedOCSPServer();
+
+		given(anOpensslCertChainValidator()
+				.with(OCSPCheckingMode.REQUIRE)
+				.with(CrlCheckingMode.IGNORE)
+				.withUpdateInterval(of(2, MINUTES))
+				.withLazyLoading());
+		X509Certificate serviceCertificate = given(anEEC()
+				.withSubject("DC=org, DC=example, CN=discovered OCSP host")
+				.withOCSPResponder(responder)
+				.signedBy(rootCA));
+
+		ValidationResult result = whenValidating(serviceCertificate);
+
+		assertThat(result.isValid(), is(false));
+		assertThat(result.getPrimaryError().getErrorCode(),
+				is(ValidationErrorCode.PKIX_FAILURE));
+		assertThat(result.getPrimaryError().getStage(),
+				is(ValidationStage.REVOCATION));
+	}
+
+	@Test
+	public void shouldKeepMultipleDiscoveredRespondersOnCompatibilityPath()
+			throws Exception {
+		CA rootCA = given(aCertificateAuthority()
+				.selfSigned()
+				.withName("DC=org, DC=example, CN=multiple OCSP root CA"));
+		given(anOpensslTrustStore().trustingCA(rootCA));
+		URL firstResponder = startMalformedOCSPServer();
+		URL secondResponder = new URL(firstResponder.toExternalForm() + "?second");
+
+		given(anOpensslCertChainValidator()
+				.with(OCSPCheckingMode.REQUIRE)
+				.with(CrlCheckingMode.IGNORE)
+				.withUpdateInterval(of(2, MINUTES))
+				.withLazyLoading());
+		X509Certificate serviceCertificate = given(anEEC()
+				.withSubject("DC=org, DC=example, CN=multiple OCSP host")
+				.withOCSPResponders(firstResponder, secondResponder)
+				.signedBy(rootCA));
+
+		ValidationResult result = whenValidating(serviceCertificate);
+
+		assertThat(result.isValid(), is(false));
+		assertThat(result.getPrimaryError().getErrorCode(),
+				is(ValidationErrorCode.ocspResponderQueryError));
+	}
+
 	private OCSPResponder startMalformedOCSPResponder(X509Certificate certificate)
 			throws IOException {
+		return new OCSPResponder(startMalformedOCSPServer(), certificate);
+	}
+
+	private URL startMalformedOCSPServer() throws IOException {
 		final byte[] malformedResponse = {1, 2, 3, 4};
 		ocspServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
 		ocspServer.createContext("/", exchange -> {
@@ -439,7 +502,7 @@ public class OpensslCertChainValidatorTest
 		ocspServer.start();
 		URL address = new URL("http://127.0.0.1:" +
 				ocspServer.getAddress().getPort() + "/");
-		return new OCSPResponder(address, certificate);
+		return address;
 	}
 
 	private ValidationResult whenValidating(X509Certificate... certificates) {
@@ -787,6 +850,7 @@ public class OpensslCertChainValidatorTest
 		private BigInteger serial = new BigInteger(Long.toString(Instant.now().getEpochSecond()));
 		private String algorithm = "SHA256WithRSA";
 		private boolean isCA;
+		private URL[] ocspResponders;
 
 		public CertificateBuilder signedBy(CA ca) {
 			ca.sign(this);
@@ -828,6 +892,18 @@ public class OpensslCertChainValidatorTest
 			return this;
 		}
 
+		public CertificateBuilder withOCSPResponder(URL responder) {
+			return withOCSPResponders(responder);
+		}
+
+		public CertificateBuilder withOCSPResponders(URL... responders) {
+			ocspResponders = requireNonNull(responders).clone();
+			for (URL responder: ocspResponders) {
+				requireNonNull(responder);
+			}
+			return this;
+		}
+
 		public CertificateBuilder ofLostCredental() {
 			KeyPairGenerator keyGen;
 			try {
@@ -856,6 +932,18 @@ public class OpensslCertChainValidatorTest
 			BasicConstraints basicConstraints = new BasicConstraints(isCA);
 			certBuilder.addExtension(new ASN1ObjectIdentifier("2.5.29.19"), true,
 					basicConstraints);
+			if (ocspResponders != null) {
+				AccessDescription[] descriptions =
+						new AccessDescription[ocspResponders.length];
+				for (int i=0; i<descriptions.length; i++) {
+					descriptions[i] = new AccessDescription(
+							AccessDescription.id_ad_ocsp,
+							new GeneralName(GeneralName.uniformResourceIdentifier,
+									ocspResponders[i].toExternalForm()));
+				}
+				certBuilder.addExtension(Extension.authorityInfoAccess, false,
+						new AuthorityInformationAccess(descriptions));
+			}
 			X509CertificateHolder holder = certBuilder.build(contentSigner);
 			return new JcaX509CertificateConverter().setProvider("BC")
 					.getCertificate(holder);

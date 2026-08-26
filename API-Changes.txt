@@ -264,6 +264,30 @@ in-memory response cache; transport controls, caching, and responder discovery
 remain separate migration layers.
 
 
+NATIVE OCSP RESPONDER DISCOVERY
+
+Strict OCSP-only validation now discovers a responder from certificate
+Authority Information Access when no explicit OCSPResponder is configured and
+every supplied non-anchor certificate contains exactly one HTTP(S) OCSP URI.
+Default responder settings are required. Certificate arrays and asserted
+CertPath inputs are supported, and configured trust anchors are not themselves
+revocation-checked.
+
+The selected path is first validated normally. Each certificate/issuer edge is
+then checked in a separate native BC OCSP pass using that certificate's own
+discovered responder URI and its already validated issuer. This supports
+chains whose CAs advertise different responders without changing the
+JVM-global ocsp.enable setting. Failures are remapped to their position in the
+complete selected path.
+
+Missing, multiple, malformed, relative, or non-HTTP(S) responder locations,
+mixed configured/discovered responders, non-default OCSP controls,
+OCSPCheckingMode.IF_AVAILABLE, and all CRL/OCSP combinations remain on the
+compatibility path. Multiple responders are not retried natively because BC
+1.85 does not structurally distinguish responder failures from definitive
+revocation; provider messages are not parsed.
+
+
 2.x HISTORICAL CHANGES
 
 1) changed semantics of the DN compare methods operating on the string representation.
