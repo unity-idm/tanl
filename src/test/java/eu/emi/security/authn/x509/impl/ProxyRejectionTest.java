@@ -22,9 +22,11 @@ import eu.emi.security.authn.x509.impl.CertificateUtils.Encoding;
 public class ProxyRejectionTest
 {
 	private static final String CERTIFICATE_DIR =
-			"src/test/resources/glite-utiljava/trusted-certs/";
+			"src/test/resources/fixtures/proxy-rejection/";
 	private static final String TRUST_ANCHOR =
-			"src/test/resources/glite-utiljava/grid-security/certificates/5a762d74.0";
+			CERTIFICATE_DIR + "trust-anchor.pem";
+	private static final String ISSUER =
+			"src/test/resources/fixtures/shared/trusted-client.pem";
 	private DirectoryCertChainValidator validator;
 	private X509Certificate issuer;
 
@@ -34,7 +36,7 @@ public class ProxyRejectionTest
 		validator = new DirectoryCertChainValidator(
 				Collections.singletonList(TRUST_ANCHOR), Encoding.PEM,
 				-1, 0, null, new ValidatorParamsExt(RevocationParametersExt.IGNORE));
-		issuer = loadCertificate("trusted_client.cert");
+		issuer = loadCertificate(ISSUER);
 		assertTrue("The non-proxy issuer must remain valid", validator.validate(
 				new X509Certificate[] {issuer}).isValid());
 	}
@@ -48,7 +50,7 @@ public class ProxyRejectionTest
 	@Test
 	public void shouldRejectLegacyProxyThroughNormalPkixValidation() throws Exception
 	{
-		ValidationResult result = validate("trusted_client.proxy.cert");
+		ValidationResult result = validate("legacy-proxy.pem");
 
 		assertFalse(result.toString(), result.isValid());
 		assertEquals(result.toString(), 1, result.getErrors().size());
@@ -57,7 +59,7 @@ public class ProxyRejectionTest
 	@Test
 	public void shouldRejectRfc3820ProxyThroughNormalPkixValidation() throws Exception
 	{
-		ValidationResult result = validate("trusted_client.proxy_rfc.cert");
+		ValidationResult result = validate("rfc3820-proxy.pem");
 
 		assertFalse(result.toString(), result.isValid());
 		assertEquals(result.toString(), 1, result.getErrors().size());
@@ -66,12 +68,12 @@ public class ProxyRejectionTest
 	private ValidationResult validate(String proxyCertificate) throws Exception
 	{
 		return validator.validate(new X509Certificate[] {
-				loadCertificate(proxyCertificate), issuer});
+				loadCertificate(CERTIFICATE_DIR + proxyCertificate), issuer});
 	}
 
-	private X509Certificate loadCertificate(String name) throws Exception
+	private X509Certificate loadCertificate(String path) throws Exception
 	{
-		try (FileInputStream input = new FileInputStream(CERTIFICATE_DIR + name))
+		try (FileInputStream input = new FileInputStream(path))
 		{
 			return CertificateUtils.loadCertificate(input, Encoding.PEM);
 		}

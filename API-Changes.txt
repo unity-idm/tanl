@@ -687,6 +687,27 @@ Messages and category mappings for the 17 retained stable codes are now part
 of the native error model itself.
 
 
+RESIDUAL GRID/EMI MATERIAL REMOVED
+
+The public eu.emi.security.authn.x509.impl.OpensslNameUtils class was removed.
+It converted RFC 2253 distinguished names to an ambiguous slash-delimited
+display syntax and had no remaining production caller. Use X500NameUtils and
+X500Principal for standards-based DN parsing, comparison, and display. There
+is no replacement for conversion to the historical slash syntax.
+
+The historical gLite validator compatibility matrix, its broad fixture corpus,
+and proxy-generation test configuration were removed. Focused tests continue
+to cover native PKIX and revocation, modern OpenSSL hashes, absent CRLs,
+certificate expiry and revocation, unusual DNs, concurrent validation,
+hostname checks, and rejection of proxy certificates.
+
+Obsolete EMI project links and mailing lists, SVN-fetched documentation and
+packaging tools, `tools.jar`-dependent site reports, and RPM/Deb packaging
+templates were removed. The Maven group/artifact coordinates and Java package
+names are intentionally unchanged pending a separately approved publication
+identity.
+
+
 2.x HISTORICAL CHANGES
 
 1) changed semantics of the DN compare methods operating on the string representation.
