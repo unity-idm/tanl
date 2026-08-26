@@ -59,7 +59,9 @@ import org.bouncycastle.cert.ocsp.SingleResp;
 import org.bouncycastle.jcajce.PKIXExtendedParameters;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 
+import eu.emi.security.authn.x509.OCSPCheckingMode;
 import eu.emi.security.authn.x509.OCSPResponder;
+import eu.emi.security.authn.x509.RevocationParameters.RevocationCheckingOrder;
 import eu.emi.security.authn.x509.StoreUpdateListener;
 import eu.emi.security.authn.x509.StoreUpdateListener.Severity;
 import eu.emi.security.authn.x509.ValidationError;
@@ -246,6 +248,42 @@ final class NativeBCPKIXValidator
 		return validateWithOrderedOCSP(input, configuredAnchors, localResponders,
 				preferLocalResponders, timeout, cacheTtl, diskCachePath, useNonce,
 				true);
+	}
+
+	/**
+	 * Builds and validates a path, then applies strict CRL and native OCSP
+	 * checking to each certificate in the configured order.
+	 */
+	ValidationResult validateWithCRLsAndOCSP(X509Certificate[] input,
+			Set<TrustAnchor> configuredAnchors, CertStore crlStore,
+			OCSPCheckingMode ocspMode, OCSPResponder[] localResponders,
+			boolean preferLocalResponders, int timeout, int cacheTtl,
+			String diskCachePath, boolean useNonce, boolean useAllEnabled,
+			RevocationCheckingOrder order) throws CertificateException
+	{
+		if (crlStore == null)
+			return invalidInput(input, -1, "CRL store must not be null");
+		if (ocspMode == null || ocspMode == OCSPCheckingMode.IGNORE)
+			return invalidInput(input, -1, "OCSP must be enabled");
+		if (order == null)
+			return invalidInput(input, -1,
+					"Revocation checking order must not be null");
+		if (timeout < 0)
+			return invalidInput(input, -1, "OCSP timeout must not be negative");
+		List<OCSPResponderTarget> configured;
+		try
+		{
+			configured = configuredResponderTargets(localResponders);
+		} catch (IllegalArgumentException e)
+		{
+			return invalid(input, -1, ValidationErrorCode.INVALID_INPUT,
+					ValidationStage.INPUT, e);
+		}
+		OCSPFetchPolicy fetchPolicy = new OCSPFetchPolicy(timeout, cacheTtl,
+				diskCachePath, useNonce, configured, preferLocalResponders,
+				ocspMode == OCSPCheckingMode.IF_AVAILABLE, order, useAllEnabled);
+		return validate(input, configuredAnchors, crlStore, null, null, true,
+				fetchPolicy);
 	}
 
 	private ValidationResult validateWithOrderedOCSP(X509Certificate[] input,
@@ -523,6 +561,42 @@ final class NativeBCPKIXValidator
 				diskCachePath, useNonce, true);
 	}
 
+	/**
+	 * Validates an asserted path, then applies strict CRL and native OCSP
+	 * checking to each certificate in the configured order.
+	 */
+	ValidationResult validateWithCRLsAndOCSP(CertPath suppliedPath,
+			Set<TrustAnchor> configuredAnchors, CertStore crlStore,
+			OCSPCheckingMode ocspMode, OCSPResponder[] localResponders,
+			boolean preferLocalResponders, int timeout, int cacheTtl,
+			String diskCachePath, boolean useNonce, boolean useAllEnabled,
+			RevocationCheckingOrder order) throws CertificateException
+	{
+		if (crlStore == null)
+			return invalidInput(null, -1, "CRL store must not be null");
+		if (ocspMode == null || ocspMode == OCSPCheckingMode.IGNORE)
+			return invalidInput(null, -1, "OCSP must be enabled");
+		if (order == null)
+			return invalidInput(null, -1,
+					"Revocation checking order must not be null");
+		if (timeout < 0)
+			return invalidInput(null, -1, "OCSP timeout must not be negative");
+		List<OCSPResponderTarget> configured;
+		try
+		{
+			configured = configuredResponderTargets(localResponders);
+		} catch (IllegalArgumentException e)
+		{
+			return invalid(null, -1, ValidationErrorCode.INVALID_INPUT,
+					ValidationStage.INPUT, e);
+		}
+		OCSPFetchPolicy fetchPolicy = new OCSPFetchPolicy(timeout, cacheTtl,
+				diskCachePath, useNonce, configured, preferLocalResponders,
+				ocspMode == OCSPCheckingMode.IF_AVAILABLE, order, useAllEnabled);
+		return validate(suppliedPath, configuredAnchors, crlStore, null, null,
+				true, fetchPolicy);
+	}
+
 	private ValidationResult validateWithOrderedOCSP(CertPath suppliedPath,
 			Set<TrustAnchor> configuredAnchors, OCSPResponder[] localResponders,
 			boolean preferLocalResponders, int timeout, int cacheTtl,
@@ -679,7 +753,16 @@ final class NativeBCPKIXValidator
 					ValidationStage.PATH_VALIDATION, e);
 		}
 
-		if (crlStore != null)
+		if (crlStore != null && ocspFetchPolicy != null &&
+				ocspFetchPolicy.revocationOrder != null)
+		{
+			ValidationResult revocationResult = validateCombinedRevocation(path,
+					result.getTrustAnchor(), crlStore, certificateStore,
+					diagnosticChain, ocspFetchPolicy);
+			if (revocationResult != null)
+				return revocationResult;
+		}
+		else if (crlStore != null)
 		{
 			try
 			{
@@ -736,6 +819,80 @@ final class NativeBCPKIXValidator
 				return ocspResult;
 		}
 		return valid(resolvedChain(path, result.getTrustAnchor()));
+	}
+
+	private ValidationResult validateCombinedRevocation(CertPath path,
+			TrustAnchor selectedAnchor, CertStore crlStore,
+			CertStore certificateStore, X509Certificate[] diagnosticChain,
+			OCSPFetchPolicy fetchPolicy)
+	{
+		if (fetchPolicy == null || fetchPolicy.revocationOrder == null)
+			throw new IllegalStateException(
+					"Combined revocation validation requires an ordered policy");
+		List<? extends Certificate> certificates = path.getCertificates();
+		for (int i=0; i<certificates.size(); i++)
+		{
+			X509Certificate certificate = (X509Certificate) certificates.get(i);
+			X509Certificate issuer = issuer(certificates, selectedAnchor, i);
+			if (issuer == null)
+				return ocspDiscoveryFailure(diagnosticChain, path, i,
+						"Revocation validation requires the issuer trust-anchor certificate",
+						null);
+
+			if (fetchPolicy.revocationOrder == RevocationCheckingOrder.CRL_OCSP)
+			{
+				ValidationResult crlFailure = validateCRLEdge(certificate, issuer,
+						crlStore, certificateStore, diagnosticChain, i);
+				if (crlFailure != null)
+					return crlFailure;
+				if (!fetchPolicy.useAllEnabled)
+					continue;
+				RevocationCheckResult ocsp = validateOrderedOCSPEdge(certificate,
+						issuer, path, fetchPolicy, certificateStore,
+						diagnosticChain, i);
+				if (ocsp.failure != null)
+					return ocsp.failure;
+			} else
+			{
+				RevocationCheckResult ocsp = validateOrderedOCSPEdge(certificate,
+						issuer, path, fetchPolicy, certificateStore,
+						diagnosticChain, i);
+				if (ocsp.failure != null)
+					return ocsp.failure;
+				if (ocsp.verified && !fetchPolicy.useAllEnabled)
+					continue;
+				ValidationResult crlFailure = validateCRLEdge(certificate, issuer,
+						crlStore, certificateStore, diagnosticChain, i);
+				if (crlFailure != null)
+					return crlFailure;
+			}
+		}
+		return null;
+	}
+
+	private ValidationResult validateCRLEdge(X509Certificate certificate,
+			X509Certificate issuer, CertStore crlStore, CertStore certificateStore,
+			X509Certificate[] diagnosticChain, int position)
+	{
+		CertPath edgePath = toCertPath(Collections.singletonList(certificate));
+		Set<TrustAnchor> edgeAnchor = Collections.singleton(
+				new TrustAnchor(issuer, null));
+		try
+		{
+			validateNative(edgePath, edgeAnchor, certificateStore, crlStore);
+			return null;
+		} catch (CertPathValidatorException e)
+		{
+			return invalidRevocationValidation(diagnosticChain, e, position);
+		} catch (InvalidAlgorithmParameterException e)
+		{
+			throw new IllegalStateException(
+					"Native BC PKIX validator rejected per-certificate CRL parameters", e);
+		} catch (RuntimeException e)
+		{
+			return invalid(diagnosticChain, position, ValidationErrorCode.PKIX_FAILURE,
+					ValidationStage.REVOCATION, e);
+		}
 	}
 
 	private PKIXCertPathValidatorResult validateNative(CertPath path,
@@ -841,10 +998,10 @@ final class NativeBCPKIXValidator
 
 			if (fetchPolicy != null)
 			{
-				ValidationResult failure = validateOrderedOCSPEdge(certificate, issuer,
+				RevocationCheckResult checked = validateOrderedOCSPEdge(certificate, issuer,
 						path, fetchPolicy, certificateStore, diagnosticChain, i);
-				if (failure != null)
-					return failure;
+				if (checked.failure != null)
+					return checked.failure;
 				continue;
 			}
 
@@ -883,7 +1040,7 @@ final class NativeBCPKIXValidator
 		return null;
 	}
 
-	private ValidationResult validateOrderedOCSPEdge(X509Certificate certificate,
+	private RevocationCheckResult validateOrderedOCSPEdge(X509Certificate certificate,
 			X509Certificate issuer, CertPath path, OCSPFetchPolicy fetchPolicy,
 			CertStore certificateStore, X509Certificate[] diagnosticChain,
 			int position)
@@ -901,8 +1058,9 @@ final class NativeBCPKIXValidator
 				first = discoveredResponderTargets(certificate);
 			} catch (CertificateException e)
 			{
-				return ocspDiscoveryFailure(diagnosticChain, path, position,
-						"Can not discover an OCSP responder", e);
+				return RevocationCheckResult.failure(ocspDiscoveryFailure(
+						diagnosticChain, path, position,
+						"Can not discover an OCSP responder", e));
 			}
 			second = fetchPolicy.localResponders;
 		}
@@ -911,9 +1069,9 @@ final class NativeBCPKIXValidator
 				certificate, issuer, fetchPolicy, certificateStore, diagnosticChain,
 				position);
 		if (firstResult.success)
-			return null;
+			return RevocationCheckResult.verified();
 		if (firstResult.terminalFailure)
-			return firstResult.failure;
+			return RevocationCheckResult.failure(firstResult.failure);
 
 		if (second == null)
 			try
@@ -921,24 +1079,26 @@ final class NativeBCPKIXValidator
 				second = discoveredResponderTargets(certificate);
 			} catch (CertificateException e)
 			{
-				return ocspDiscoveryFailure(diagnosticChain, path, position,
-						"Can not discover an OCSP responder", e);
+				return RevocationCheckResult.failure(ocspDiscoveryFailure(
+						diagnosticChain, path, position,
+						"Can not discover an OCSP responder", e));
 			}
 		OCSPResponderGroupResult secondResult = validateResponderGroup(second,
 				certificate, issuer, fetchPolicy, certificateStore, diagnosticChain,
 				position);
 		if (secondResult.success)
-			return null;
+			return RevocationCheckResult.verified();
 		if (secondResult.terminalFailure)
-			return secondResult.failure;
+			return RevocationCheckResult.failure(secondResult.failure);
 		if (fetchPolicy.softFailUnavailable)
-			return null;
+			return RevocationCheckResult.unavailable();
 		if (secondResult.failure != null)
-			return secondResult.failure;
+			return RevocationCheckResult.failure(secondResult.failure);
 		if (firstResult.failure != null)
-			return firstResult.failure;
-		return ocspDiscoveryFailure(diagnosticChain, path, position,
-				"Strict native OCSP requires at least one responder", null);
+			return RevocationCheckResult.failure(firstResult.failure);
+		return RevocationCheckResult.failure(ocspDiscoveryFailure(diagnosticChain,
+				path, position,
+				"Strict native OCSP requires at least one responder", null));
 	}
 
 	private List<OCSPResponderTarget> discoveredResponderTargets(
@@ -1212,17 +1372,29 @@ final class NativeBCPKIXValidator
 		private final List<OCSPResponderTarget> localResponders;
 		private final boolean preferLocalResponders;
 		private final boolean softFailUnavailable;
+		private final RevocationCheckingOrder revocationOrder;
+		private final boolean useAllEnabled;
 
 		private OCSPFetchPolicy(int timeout, int cacheTtl, String diskCachePath,
 				boolean useNonce)
 		{
 			this(timeout, cacheTtl, diskCachePath, useNonce,
-					Collections.<OCSPResponderTarget>emptyList(), true, false);
+					Collections.<OCSPResponderTarget>emptyList(), true, false,
+					null, false);
 		}
 
 		private OCSPFetchPolicy(int timeout, int cacheTtl, String diskCachePath,
 				boolean useNonce, List<OCSPResponderTarget> localResponders,
 				boolean preferLocalResponders, boolean softFailUnavailable)
+		{
+			this(timeout, cacheTtl, diskCachePath, useNonce, localResponders,
+					preferLocalResponders, softFailUnavailable, null, false);
+		}
+
+		private OCSPFetchPolicy(int timeout, int cacheTtl, String diskCachePath,
+				boolean useNonce, List<OCSPResponderTarget> localResponders,
+				boolean preferLocalResponders, boolean softFailUnavailable,
+				RevocationCheckingOrder revocationOrder, boolean useAllEnabled)
 		{
 			this.timeout = timeout;
 			this.cacheTtl = cacheTtl;
@@ -1233,6 +1405,8 @@ final class NativeBCPKIXValidator
 					new ArrayList<OCSPResponderTarget>(localResponders));
 			this.preferLocalResponders = preferLocalResponders;
 			this.softFailUnavailable = softFailUnavailable;
+			this.revocationOrder = revocationOrder;
+			this.useAllEnabled = useAllEnabled;
 		}
 	}
 
@@ -1269,6 +1443,33 @@ final class NativeBCPKIXValidator
 				boolean retryableTransportFailure)
 		{
 			return new OCSPResponderAttempt(failure, retryableTransportFailure);
+		}
+	}
+
+	private static final class RevocationCheckResult
+	{
+		private final boolean verified;
+		private final ValidationResult failure;
+
+		private RevocationCheckResult(boolean verified, ValidationResult failure)
+		{
+			this.verified = verified;
+			this.failure = failure;
+		}
+
+		private static RevocationCheckResult verified()
+		{
+			return new RevocationCheckResult(true, null);
+		}
+
+		private static RevocationCheckResult unavailable()
+		{
+			return new RevocationCheckResult(false, null);
+		}
+
+		private static RevocationCheckResult failure(ValidationResult failure)
+		{
+			return new RevocationCheckResult(false, failure);
 		}
 	}
 

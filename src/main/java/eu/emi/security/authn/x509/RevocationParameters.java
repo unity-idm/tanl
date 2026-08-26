@@ -14,13 +14,16 @@ import eu.emi.security.authn.x509.impl.RevocationParametersExt;
  * different depending on validator being used.
  * <p>
  * This class controls also the overall revocation checking process, if more then one revocation 
- * source is enabled. It is possible to choose which is tried first and whether all enabled sources must be used
- * always (useAllEnabled). For instance, let's assume the default revocation checking order (OCSP, CRL) and that both
- * sources are enabled. Then if OCSP returns that certificate is valid and useAllEnabled is true, also the CRL 
- * will be checked. If useAllEnabled is false, then OCSP answer will be sufficient.
+ * source is enabled. The policy is applied independently to each non-anchor certificate. It is possible to choose
+ * which mechanism is tried first and whether all enabled mechanisms must always be used ({@code useAllEnabled}).
+ * For instance, assume the default revocation checking order (OCSP, CRL) and that both mechanisms are enabled.
+ * If OCSP verifies the certificate and {@code useAllEnabled} is true, CRL is also checked. If
+ * {@code useAllEnabled} is false, the verified OCSP answer is sufficient. An optional mechanism which can not
+ * determine status does not short-circuit the next mechanism.
  * <p>
- * Note that regardless of the useAllEnabled setting, if the first source returns that the certificate is revoked,
- * the next one will not be used.
+ * Note that regardless of the {@code useAllEnabled} setting, a definitive failure from the first mechanism,
+ * including a revoked certificate or invalid revocation data, terminates validation and the next mechanism is not
+ * used.
  * <p>
  * Finally note that the individual revocation sources settings are the most important anyway. For instance 
  * if both sources are enabled, but in non-requisite modes, then the whole revocation checking can finish in 
@@ -166,6 +169,7 @@ public class RevocationParameters implements Cloneable
 	 */
 	public RevocationParameters clone()
 	{
-		return new RevocationParameters(crlCheckingMode, ocspParameters);
+		return new RevocationParameters(crlCheckingMode, ocspParameters,
+				useAllEnabled, order);
 	}
 }
