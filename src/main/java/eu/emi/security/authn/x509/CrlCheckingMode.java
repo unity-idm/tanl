@@ -23,14 +23,6 @@ public enum CrlCheckingMode
 	REQUIRE,
 	
 	/**
-	 * Legacy name for optional, present-but-enforced CRL checking.
-	 * @deprecated Use {@link #IF_PRESENT}. This value is retained as a
-	 * compatibility alias with the same behavior.
-	 */
-	@Deprecated
-	IF_VALID,
-
-	/**
 	 * If a potentially applicable parsed CRL is present, require strict native
 	 * CRL validation. If no CRL issued by the certificate issuer or an explicit
 	 * distribution-point CRL issuer is present, the revocation status is left

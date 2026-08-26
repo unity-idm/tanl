@@ -23,6 +23,39 @@ The exact removed and replacement Java symbols will be appended by the PR that
 changes each part of the API.
 
 
+MAVEN COORDINATES AND JAVA BASELINE
+
+The published Maven coordinates changed from eu.eu-emi.security:canl to
+io.imunity.tanl:tanl. Java package names remain under eu.emi.security; this is
+an artifact-coordinate change, not a package relocation.
+
+The library now targets Java 21. Building it requires JDK 21 or newer and
+Maven 3.9.2 or newer.
+
+The initial TANL development version is 0.0.1-SNAPSHOT.
+
+
+DEPRECATED CANL COMPATIBILITY APIS REMOVED
+
+TANL does not carry forward project-owned APIs that CANL had already
+deprecated. The following types were removed:
+
+- eu.emi.security.authn.x509.impl.SocketFactoryCreator
+- eu.emi.security.authn.x509.impl.AbstractHostnameToCertificateChecker
+- eu.emi.security.authn.x509.impl.HostnameMismatchCallback
+
+Use SocketFactoryCreator2 and HostnameMismatchCallback2 for JSSE integration
+and hostname mismatch handling. The following members and constructor
+signatures were also removed:
+
+- CrlCheckingMode.IF_VALID (use IF_PRESENT)
+- RevocationParameters(CrlCheckingMode) (pass OCSPParametes explicitly)
+- RevocationParametersExt(CrlCheckingMode, CRLParameters) (pass
+  OCSPParametes explicitly)
+- KeyStoreHelper.getInstance(String) (use getInstanceForTrust(String) or
+  getInstanceForCredential(String), according to the keystore role)
+
+
 PROXY CERTIFICATE SUPPORT REMOVED
 
 Proxy-aware validation and proxy generation/inspection are no longer part of
@@ -569,8 +602,8 @@ the compatibility implementation pending the separate IF_PRESENT decision.
 NATIVE CRL IF_PRESENT MODE
 
 CrlCheckingMode.IF_PRESENT was added for optional, present-but-enforced CRL
-validation and is now the default. CrlCheckingMode.IF_VALID is deprecated but
-retained as a compatibility alias with identical behavior.
+validation and is now the default. The deprecated CrlCheckingMode.IF_VALID
+compatibility alias was subsequently removed from TANL.
 
 The selected path is base-validated first. For each non-anchor certificate,
 the configured store is queried for parsed X509CRLs issued by the certificate

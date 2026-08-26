@@ -9,6 +9,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.UnsupportedEncodingException;
 import java.net.HttpURLConnection;
+import java.net.URI;
 import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.Charset;
@@ -147,7 +148,7 @@ final class NativeOCSPClient
 			connection = doPost(responder, request, timeout);
 		else
 		{
-			connection = (HttpURLConnection) new URL(getUrl).openConnection();
+			connection = (HttpURLConnection) URI.create(getUrl).toURL().openConnection();
 			configureHttpConnection(connection, timeout);
 		}
 

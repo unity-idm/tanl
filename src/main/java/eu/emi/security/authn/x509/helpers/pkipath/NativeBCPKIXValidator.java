@@ -437,11 +437,9 @@ final class NativeBCPKIXValidator
 		}
 	}
 
-	@SuppressWarnings("deprecation")
 	private boolean isCRLIfPresent(CrlCheckingMode mode)
 	{
-		return mode == CrlCheckingMode.IF_PRESENT ||
-				mode == CrlCheckingMode.IF_VALID;
+		return mode == CrlCheckingMode.IF_PRESENT;
 	}
 
 	/**

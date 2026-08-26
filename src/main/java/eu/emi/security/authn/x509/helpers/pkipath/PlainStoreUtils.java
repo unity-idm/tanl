@@ -10,6 +10,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.MalformedURLException;
+import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.util.ArrayList;
@@ -49,9 +50,9 @@ public class PlainStoreUtils
 		{
 			try
 			{
-				URL u = new URL(s);
+				URL u = URI.create(s).toURL();
 				urlLocations.add(u);
-			} catch (MalformedURLException e)
+			} catch (IllegalArgumentException | MalformedURLException e)
 			{
 				wildcardLocations.add(s);
 			}
@@ -90,7 +91,7 @@ public class PlainStoreUtils
 		File f = new File(wildcard);
 		File base = f.getAbsoluteFile().getParentFile();
 		Collection<File> files = FileUtils.listFiles(base, 
-				new WildcardFileFilter(f.getName()), null);
+				WildcardFileFilter.builder().setWildcards(f.getName()).get(), null);
 		for (File file: files)
 			try
 			{
