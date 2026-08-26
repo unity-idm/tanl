@@ -425,6 +425,65 @@ public class OpensslCertChainValidatorTest
 	}
 
 	@Test
+	public void shouldUseNativeTransportTimeoutWhenOCSPCacheIsDisabled()
+			throws Exception {
+		CA rootCA = given(aCertificateAuthority()
+				.selfSigned()
+				.withName("DC=org, DC=example, CN=timeout OCSP root CA"));
+		given(anOpensslTrustStore().trustingCA(rootCA));
+		OCSPResponder malformedResponder = startMalformedOCSPResponder(
+				rootCA.getCertificate());
+
+		given(anOpensslCertChainValidator()
+				.with(OCSPCheckingMode.REQUIRE)
+				.with(malformedResponder)
+				.withOCSPTimeout(250)
+				.withoutOCSPCache()
+				.with(CrlCheckingMode.IGNORE)
+				.withUpdateInterval(of(2, MINUTES))
+				.withLazyLoading());
+		X509Certificate serviceCertificate = given(anEEC()
+				.withSubject("DC=org, DC=example, CN=timeout OCSP host")
+				.signedBy(rootCA));
+
+		ValidationResult result = whenValidating(serviceCertificate);
+
+		assertThat(result.isValid(), is(false));
+		assertThat(result.getPrimaryError().getErrorCode(),
+				is(ValidationErrorCode.PKIX_FAILURE));
+		assertThat(result.getPrimaryError().getStage(),
+				is(ValidationStage.REVOCATION));
+	}
+
+	@Test
+	public void shouldKeepCustomTimeoutWithCachingOnCompatibilityPath()
+			throws Exception {
+		CA rootCA = given(aCertificateAuthority()
+				.selfSigned()
+				.withName("DC=org, DC=example, CN=cached timeout OCSP root CA"));
+		given(anOpensslTrustStore().trustingCA(rootCA));
+		OCSPResponder malformedResponder = startMalformedOCSPResponder(
+				rootCA.getCertificate());
+
+		given(anOpensslCertChainValidator()
+				.with(OCSPCheckingMode.REQUIRE)
+				.with(malformedResponder)
+				.withOCSPTimeout(250)
+				.with(CrlCheckingMode.IGNORE)
+				.withUpdateInterval(of(2, MINUTES))
+				.withLazyLoading());
+		X509Certificate serviceCertificate = given(anEEC()
+				.withSubject("DC=org, DC=example, CN=cached timeout OCSP host")
+				.signedBy(rootCA));
+
+		ValidationResult result = whenValidating(serviceCertificate);
+
+		assertThat(result.isValid(), is(false));
+		assertThat(result.getPrimaryError().getErrorCode(),
+				is(ValidationErrorCode.ocspResponderQueryError));
+	}
+
+	@Test
 	public void shouldUseNativeValidationForOneDiscoveredRequiredOCSPResponder()
 			throws Exception {
 		CA rootCA = given(aCertificateAuthority()
@@ -440,6 +499,36 @@ public class OpensslCertChainValidatorTest
 				.withLazyLoading());
 		X509Certificate serviceCertificate = given(anEEC()
 				.withSubject("DC=org, DC=example, CN=discovered OCSP host")
+				.withOCSPResponder(responder)
+				.signedBy(rootCA));
+
+		ValidationResult result = whenValidating(serviceCertificate);
+
+		assertThat(result.isValid(), is(false));
+		assertThat(result.getPrimaryError().getErrorCode(),
+				is(ValidationErrorCode.PKIX_FAILURE));
+		assertThat(result.getPrimaryError().getStage(),
+				is(ValidationStage.REVOCATION));
+	}
+
+	@Test
+	public void shouldUseNativeTimeoutForOneDiscoveredResponderWithoutCache()
+			throws Exception {
+		CA rootCA = given(aCertificateAuthority()
+				.selfSigned()
+				.withName("DC=org, DC=example, CN=discovered timeout OCSP root CA"));
+		given(anOpensslTrustStore().trustingCA(rootCA));
+		URL responder = startMalformedOCSPServer();
+
+		given(anOpensslCertChainValidator()
+				.with(OCSPCheckingMode.REQUIRE)
+				.withOCSPTimeout(250)
+				.withoutOCSPCache()
+				.with(CrlCheckingMode.IGNORE)
+				.withUpdateInterval(of(2, MINUTES))
+				.withLazyLoading());
+		X509Certificate serviceCertificate = given(anEEC()
+				.withSubject("DC=org, DC=example, CN=discovered timeout OCSP host")
 				.withOCSPResponder(responder)
 				.signedBy(rootCA));
 
@@ -591,6 +680,8 @@ public class OpensslCertChainValidatorTest
 		private final List<StoreUpdateListener> listeners = new ArrayList<>();
 		private boolean isLazy;
 		private boolean useNonce;
+		private int ocspTimeout = OCSPParametes.DEFAULT_TIMEOUT;
+		private int ocspCacheTtl = OCSPParametes.DEFAULT_CACHE;
 
 		public OpensslCertChainValidatorBuilder with(OCSPCheckingMode mode) {
 			ocspMode = requireNonNull(mode);
@@ -604,6 +695,16 @@ public class OpensslCertChainValidatorTest
 
 		public OpensslCertChainValidatorBuilder withNonce() {
 			useNonce = true;
+			return this;
+		}
+
+		public OpensslCertChainValidatorBuilder withOCSPTimeout(int timeout) {
+			ocspTimeout = timeout;
+			return this;
+		}
+
+		public OpensslCertChainValidatorBuilder withoutOCSPCache() {
+			ocspCacheTtl = -1;
 			return this;
 		}
 
@@ -641,6 +742,8 @@ public class OpensslCertChainValidatorTest
 					new OCSPParametes(ocspMode) :
 					new OCSPParametes(ocspMode, ocspResponder);
 			ocspParameters.setUseNonce(useNonce);
+			ocspParameters.setConntectTimeout(ocspTimeout);
+			ocspParameters.setCacheTtl(ocspCacheTtl);
 			RevocationParameters revocationParams =
 					new RevocationParameters(crlCheckingMode, ocspParameters);
 			ValidatorParams validatorParams = new ValidatorParams(revocationParams, listeners);

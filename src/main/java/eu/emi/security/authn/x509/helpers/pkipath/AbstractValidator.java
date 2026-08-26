@@ -148,11 +148,7 @@ public abstract class AbstractValidator implements X509CertChainValidatorExt
 		{
 			try
 			{
-				ValidationResult result = usesDiscoveredOCSPResponders() ?
-						nativeValidator.validateWithOCSPFromAIA(certPath,
-								anchors) :
-						nativeValidator.validateWithOCSP(certPath,
-								anchors, getNativeOCSPResponder());
+				ValidationResult result = validateNativeOCSP(certPath, anchors);
 				return processResult(result);
 			} catch (CertificateException e)
 			{
@@ -190,10 +186,7 @@ public abstract class AbstractValidator implements X509CertChainValidatorExt
 				result = nativeValidator.validateWithCRLs(certChain, anchors,
 						new SimpleCRLStore(crlStore));
 			else if (isNativeOCSPValidation(certChain, anchors))
-				result = usesDiscoveredOCSPResponders() ?
-						nativeValidator.validateWithOCSPFromAIA(certChain, anchors) :
-						nativeValidator.validateWithOCSP(certChain, anchors,
-							getNativeOCSPResponder());
+				result = validateNativeOCSP(certChain, anchors);
 			else
 				result = validator.validate(certChain, anchors,
 						new SimpleCRLStore(crlStore), revocationMode, observers);
@@ -228,16 +221,33 @@ public abstract class AbstractValidator implements X509CertChainValidatorExt
 			return false;
 		OCSPResponder[] responders = parameters.getLocalResponders();
 		if (responders == null || responders.length > 1 ||
-				parameters.getConntectTimeout() != OCSPParametes.DEFAULT_TIMEOUT ||
 				!parameters.isPreferLocalResponders() || parameters.isUseNonce() ||
-				parameters.getCacheTtl() != OCSPParametes.DEFAULT_CACHE ||
-				parameters.getDiskCachePath() != null)
+				parameters.getDiskCachePath() != null ||
+				!hasSupportedOCSPTransport(parameters))
 			return false;
 		if (responders.length == 0)
 			return hasOneResponderPerUntrustedCertificate(certificates, anchors);
 		return !hasAuthorityInformationAccess(certificates) &&
 				responders[0] != null && responders[0].getAddress() != null &&
-				responders[0].getCertificate() != null;
+				responders[0].getCertificate() != null &&
+				(!usesManagedOCSPTransport() ||
+						isHTTPResponder(responders[0]));
+	}
+
+	private boolean hasSupportedOCSPTransport(OCSPParametes parameters)
+	{
+		if (parameters.getConntectTimeout() < 0)
+			return false;
+		if (parameters.getCacheTtl() < 0)
+			return true;
+		return parameters.getConntectTimeout() == OCSPParametes.DEFAULT_TIMEOUT &&
+				parameters.getCacheTtl() == OCSPParametes.DEFAULT_CACHE;
+	}
+
+	private boolean isHTTPResponder(OCSPResponder responder)
+	{
+		String protocol = responder.getAddress().getProtocol();
+		return "http".equalsIgnoreCase(protocol) || "https".equalsIgnoreCase(protocol);
 	}
 
 	private boolean hasOneResponderPerUntrustedCertificate(
@@ -288,9 +298,49 @@ public abstract class AbstractValidator implements X509CertChainValidatorExt
 		return revocationMode.getOcspParameters().getLocalResponders()[0];
 	}
 
+	private ValidationResult validateNativeOCSP(X509Certificate[] certificates,
+			Set<TrustAnchor> anchors) throws CertificateException
+	{
+		if (usesDiscoveredOCSPResponders())
+			return usesManagedOCSPTransport() ?
+					nativeValidator.validateWithOCSPFromAIA(certificates, anchors,
+							getOCSPTimeout()) :
+					nativeValidator.validateWithOCSPFromAIA(certificates, anchors);
+		return usesManagedOCSPTransport() ?
+				nativeValidator.validateWithOCSP(certificates, anchors,
+						getNativeOCSPResponder(), getOCSPTimeout()) :
+				nativeValidator.validateWithOCSP(certificates, anchors,
+						getNativeOCSPResponder());
+	}
+
+	private ValidationResult validateNativeOCSP(CertPath path,
+			Set<TrustAnchor> anchors) throws CertificateException
+	{
+		if (usesDiscoveredOCSPResponders())
+			return usesManagedOCSPTransport() ?
+					nativeValidator.validateWithOCSPFromAIA(path, anchors,
+							getOCSPTimeout()) :
+					nativeValidator.validateWithOCSPFromAIA(path, anchors);
+		return usesManagedOCSPTransport() ?
+				nativeValidator.validateWithOCSP(path, anchors,
+						getNativeOCSPResponder(), getOCSPTimeout()) :
+				nativeValidator.validateWithOCSP(path, anchors,
+						getNativeOCSPResponder());
+	}
+
+	private int getOCSPTimeout()
+	{
+		return revocationMode.getOcspParameters().getConntectTimeout();
+	}
+
 	private boolean usesDiscoveredOCSPResponders()
 	{
 		return revocationMode.getOcspParameters().getLocalResponders().length == 0;
+	}
+
+	private boolean usesManagedOCSPTransport()
+	{
+		return revocationMode.getOcspParameters().getCacheTtl() < 0;
 	}
 
 	private ValidationResult processInputError(X509Certificate[] certChain, Throwable failure)
