@@ -566,6 +566,127 @@ CrlCheckingMode.IF_VALID, including its combined configurations, remains on
 the compatibility implementation pending the separate IF_PRESENT decision.
 
 
+NATIVE CRL IF_PRESENT MODE
+
+CrlCheckingMode.IF_PRESENT was added for optional, present-but-enforced CRL
+validation and is now the default. CrlCheckingMode.IF_VALID is deprecated but
+retained as a compatibility alias with identical behavior.
+
+The selected path is base-validated first. For each non-anchor certificate,
+the configured store is queried for parsed X509CRLs issued by the certificate
+issuer or by an explicit directory-name cRLIssuer in its CRL Distribution
+Points extension. If none exists, that edge is unavailable and is accepted by
+CRL-only validation or passed to the next combined-policy mechanism. If any
+candidate exists, the edge is validated using strict native BC CRL checking.
+
+Candidate discovery does not pre-validate dates, signatures, distribution-
+point scope, reason coverage, delta relationships, or revocation status.
+Consequently expired, badly signed, inapplicable, incomplete, revoking, and
+otherwise rejected candidate sets remain terminal. Malformed source bytes
+which the configured store can not decode are not parsed X509CRL candidates;
+existing CRL loading-error notifications still report them.
+
+The native mode supports certificate arrays, asserted CertPaths, partially
+populated chains, indirect CRL issuers, distribution-point CRLs, delta CRLs,
+and combined CRL/OCSP order and useAllEnabled policy. Store-query and CRL
+Distribution Points parsing failures are terminal. Unrelated issuers do not
+activate strict checking. Provider messages are not parsed and native BC
+remains the sole authority for every present candidate.
+
+
+LEGACY VALIDATION ENGINE REMOVED
+
+Native Bouncy Castle PKIX validation is now the only certificate-path and
+revocation-validation implementation. All retained CRL, OCSP, and combined
+configurations route to it for both certificate arrays and CertPath inputs.
+There is no compatibility fallback. Unsupported or null configuration is
+reported as INVALID_INPUT.
+
+The custom OCSP request and bounded HTTP transport needed by native validation
+is package-private and never authenticates or interprets response status.
+Native PKIXRevocationChecker remains the sole response-validation authority.
+The removed internal-package standalone OCSP client also exposed signed
+requests through an X509Credential argument. Validator configuration never
+supported a request signer, so retained validator requests remain unsigned.
+Direct users should use Bouncy Castle's OCSP request API.
+
+The following public types were removed:
+
+- eu.emi.security.authn.x509.helpers.pkipath.BCCertPathValidator
+- eu.emi.security.authn.x509.helpers.pkipath.BCErrorMapper
+- eu.emi.security.authn.x509.helpers.pkipath.ExtPKIXParameters2
+- eu.emi.security.authn.x509.helpers.pkipath.ExtPKIXParameters2.Builder
+- eu.emi.security.authn.x509.helpers.pkipath.NonValidatingCertPathBuilder
+- eu.emi.security.authn.x509.helpers.pkipath.SimpleValidationErrorException
+- eu.emi.security.authn.x509.helpers.pkipath.ValidationErrorException
+- eu.emi.security.authn.x509.helpers.pkipath.bc.CertPathValidatorUtilitiesCanl
+- eu.emi.security.authn.x509.helpers.pkipath.bc.FixedBCPKIXCertPathReviewer
+- eu.emi.security.authn.x509.helpers.pkipath.bc.PKIXPolicyNode
+- eu.emi.security.authn.x509.helpers.pkipath.bc.RFC3280CertPathUtilitiesCanl
+- eu.emi.security.authn.x509.helpers.revocation.CRLRevocationChecker
+- eu.emi.security.authn.x509.helpers.revocation.RevocationChecker
+- eu.emi.security.authn.x509.helpers.revocation.RevocationStatus
+- eu.emi.security.authn.x509.helpers.ocsp.BoundedSizeLruMap
+- eu.emi.security.authn.x509.helpers.ocsp.OCSPCacheBase
+- eu.emi.security.authn.x509.helpers.ocsp.OCSPCachingClient
+- eu.emi.security.authn.x509.helpers.ocsp.OCSPClientImpl
+- eu.emi.security.authn.x509.helpers.ocsp.OCSPClientImpl.OCSPResponseDecodingException
+- eu.emi.security.authn.x509.helpers.ocsp.OCSPRespondersCache
+- eu.emi.security.authn.x509.helpers.ocsp.OCSPResponseStructure
+- eu.emi.security.authn.x509.helpers.ocsp.OCSPResponsesCache
+- eu.emi.security.authn.x509.helpers.ocsp.OCSPResult
+- eu.emi.security.authn.x509.helpers.ocsp.OCSPResult.Status
+- eu.emi.security.authn.x509.helpers.ocsp.OCSPRevocationChecker
+- eu.emi.security.authn.x509.helpers.ocsp.OCSPVerifier
+
+The following ValidationError members were removed with the compatibility
+error formatter:
+
+- ValidationError(X509Certificate[], int, ValidationErrorCode, Object...)
+- ValidationError.getParameters()
+- ValidationError.makeReason(Throwable)
+- ValidationError.makeReasonFromStack(Throwable)
+
+The protected AbstractValidator.validator compatibility-reviewer field was
+removed. Subclasses continue to initialize through AbstractValidator.init()
+and validation is always delegated to the private native implementation.
+
+The GENERAL_INPUT, X509_BASIC, X509_CHAIN, CRL, and OCSP
+ValidationErrorCategory values were removed. INPUT, PATH, CERTIFICATE,
+NAME_CONSTRAINT, POLICY, REVOCATION, and OTHER are the complete retained set.
+
+The following legacy ValidationErrorCode values were removed:
+
+- unknown, unknownMsg, inputError, emptyCertPath, invalidCertificatePath
+- noIssuerPublicKey, noBasicConstraints, pathLenghtExtended,
+  conflictingTrustAnchors, noTrustAnchorFound, trustButInvalidCert,
+  signatureNotVerified, certificateNotYetValid, certificateExpired, noCACert,
+  noCertSign, unknownCriticalExt, certWrongIssuer, errorProcesingBC,
+  QcStatementExtError, certPathCheckerError, criticalExtensionError,
+  unknownCriticalExts, pubKeyError, processLengthConstError,
+  rootKeyIsValidButNotATrustAnchor, trustAnchorIssuerError, trustDNInvalid,
+  trustKeyUsage, trustPubKeyError
+- explicitPolicy, invalidPolicyMapping, invalidPolicy, noValidPolicyTree,
+  policyConstExtError, policyExtError, policyInhibitExtError,
+  policyMapExtError, policyQualifierError
+- excludedDN, excludedEmail, excludedIP, ncExtError, ncSubjectNameError,
+  notPermittedDN, notPermittedEmail, notPermittedIP, subjAltNameExtError
+- certRevoked, noBaseCRL, noValidCrlFound, noCrlForExpiredCert,
+  crlVerifyFailed, distrPtExtError, crlAuthInfoAccError, crlBCExtError,
+  crlDistPtExtError, crlExtractionError, crlIssuerException,
+  crlNoIssuerPublicKey, crlOnlyAttrCert, crlOnlyCaCert, crlOnlyUserCert,
+  crlReasonExtError, onlineCRLWrongCA, onlineInvalidCRL, noCrlInCertstore,
+  noCrlSigningPermited, loadCrlDistPointError, localInvalidCRL,
+  crlUnknownCritExt, crlNoIssuerForDP, crlNoIssuerAndDP,
+  crlIDPAndDPMismatch, crlDeltaProblem, crlAKIExtError
+- ocspCertRevoked, ocspNoResponder, ocspResponderQueryError,
+  ocspResponseInvalid, ocspOtherError
+
+The valiadationErrors.properties compatibility message bundle was removed.
+Messages and category mappings for the 17 retained stable codes are now part
+of the native error model itself.
+
+
 2.x HISTORICAL CHANGES
 
 1) changed semantics of the DN compare methods operating on the string representation.

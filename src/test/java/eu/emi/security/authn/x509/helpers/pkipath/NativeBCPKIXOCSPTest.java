@@ -84,6 +84,7 @@ import org.junit.rules.TemporaryFolder;
 
 import com.sun.net.httpserver.HttpServer;
 
+import eu.emi.security.authn.x509.CrlCheckingMode;
 import eu.emi.security.authn.x509.OCSPCheckingMode;
 import eu.emi.security.authn.x509.OCSPResponder;
 import eu.emi.security.authn.x509.RevocationParameters.RevocationCheckingOrder;
@@ -94,8 +95,8 @@ import eu.emi.security.authn.x509.ValidationErrorCode;
 import eu.emi.security.authn.x509.ValidationResult;
 import eu.emi.security.authn.x509.ValidationStage;
 import eu.emi.security.authn.x509.helpers.ObserversHandler;
-import eu.emi.security.authn.x509.helpers.ocsp.OCSPClientImpl.OCSPHTTPException;
-import eu.emi.security.authn.x509.helpers.ocsp.OCSPClientImpl.OCSPResponseDecodingException;
+import eu.emi.security.authn.x509.helpers.pkipath.NativeOCSPClient.HTTPException;
+import eu.emi.security.authn.x509.helpers.pkipath.NativeOCSPClient.ResponseDecodingException;
 import eu.emi.security.authn.x509.impl.CertificateUtils;
 
 public class NativeBCPKIXOCSPTest
@@ -600,7 +601,7 @@ public class NativeBCPKIXOCSPTest
 
 		assertNativeOCSPFailure(rejectedRequest, 0, false);
 		assertTrue(rejectedRequest.getPrimaryError().getCause() instanceof
-				OCSPHTTPException);
+				HTTPException);
 		assertTrue(independentRequest.toString(), independentRequest.isValid());
 		assertThat(queries.get(), is(2));
 	}
@@ -751,7 +752,7 @@ public class NativeBCPKIXOCSPTest
 
 		assertNativeOCSPFailure(result, 0, false);
 		assertTrue(result.getPrimaryError().getCause() instanceof
-				OCSPResponseDecodingException);
+				ResponseDecodingException);
 		assertThat(queries.get(), is(1));
 	}
 
@@ -892,7 +893,7 @@ public class NativeBCPKIXOCSPTest
 
 		assertNativeOCSPFailure(result, 0, false);
 		assertTrue(result.getPrimaryError().getCause() instanceof
-				OCSPResponseDecodingException);
+				ResponseDecodingException);
 		assertThat(queries.get(), is(1));
 	}
 
@@ -913,6 +914,86 @@ public class NativeBCPKIXOCSPTest
 
 		assertNativeOCSPFailure(result, 0, false);
 		assertThat(queries.get(), is(1));
+	}
+
+	@Test
+	public void shouldAdvanceFromMissingOptionalCRLToOCSP()
+			throws Exception
+	{
+		responderServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+		AtomicInteger queries = new AtomicInteger();
+		addResponse("/after-missing-crl", response(null, rootKeyPair.getPrivate(),
+				new Date(System.currentTimeMillis() + 10 * MINUTE)), queries);
+		responderServer.start();
+		OCSPResponder[] responders = {new OCSPResponder(
+				responderURI("/after-missing-crl").toURL(), root)};
+
+		ValidationResult result = validateCombined(emptyCRLStore(),
+				CrlCheckingMode.IF_PRESENT, OCSPCheckingMode.REQUIRE, responders,
+				false, RevocationCheckingOrder.CRL_OCSP);
+
+		assertTrue(result.toString(), result.isValid());
+		assertThat(queries.get(), is(1));
+	}
+
+	@Test
+	public void shouldAcceptWhenBothOptionalMechanismsAreUnavailable()
+			throws Exception
+	{
+		ValidationResult result = validateCombined(emptyCRLStore(),
+				CrlCheckingMode.IF_PRESENT, OCSPCheckingMode.IF_AVAILABLE,
+				new OCSPResponder[0], false, RevocationCheckingOrder.CRL_OCSP);
+
+		assertTrue(result.toString(), result.isValid());
+	}
+
+	@Test
+	public void shouldNotFallbackFromRevokingPresentCRLToGoodOCSP()
+			throws Exception
+	{
+		responderServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+		AtomicInteger queries = new AtomicInteger();
+		addResponse("/after-revoking-crl", response(null, rootKeyPair.getPrivate(),
+				new Date(System.currentTimeMillis() + 10 * MINUTE)), queries);
+		responderServer.start();
+		OCSPResponder[] responders = {new OCSPResponder(
+				responderURI("/after-revoking-crl").toURL(), root)};
+
+		ValidationResult result = validateCombined(crlStore(target),
+				CrlCheckingMode.IF_PRESENT, OCSPCheckingMode.REQUIRE, responders,
+				false, RevocationCheckingOrder.CRL_OCSP);
+
+		assertFalse(result.toString(), result.isValid());
+		assertThat(result.getPrimaryError().getStage(),
+				is(ValidationStage.REVOCATION));
+		assertThat(queries.get(), is(0));
+	}
+
+	@Test
+	public void shouldApplyRequireAllToPresentCRLAfterGoodOCSP()
+			throws Exception
+	{
+		responderServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+		AtomicInteger queries = new AtomicInteger();
+		addResponse("/before-revoking-crl", response(null, rootKeyPair.getPrivate(),
+				new Date(System.currentTimeMillis() + 10 * MINUTE)), queries);
+		responderServer.start();
+		OCSPResponder[] responders = {new OCSPResponder(
+				responderURI("/before-revoking-crl").toURL(), root)};
+
+		ValidationResult shortCircuited = validateCombined(crlStore(target),
+				CrlCheckingMode.IF_PRESENT, OCSPCheckingMode.REQUIRE, responders,
+				false, RevocationCheckingOrder.OCSP_CRL);
+		ValidationResult requireAll = validateCombined(path(target, root),
+				crlStore(target), CrlCheckingMode.IF_PRESENT,
+				OCSPCheckingMode.REQUIRE, responders, true,
+				RevocationCheckingOrder.OCSP_CRL);
+
+		assertTrue(shortCircuited.toString(), shortCircuited.isValid());
+		assertFalse(requireAll.toString(), requireAll.isValid());
+		assertThat(requireAll.getPrimaryError().getStage(),
+				is(ValidationStage.REVOCATION));
+		assertThat(queries.get(), is(2));
 	}
 
 	@Test
@@ -992,7 +1073,7 @@ public class NativeBCPKIXOCSPTest
 
 		assertNativeOCSPFailure(result, 0, false);
 		assertTrue(result.getPrimaryError().getCause() instanceof
-				OCSPResponseDecodingException);
+				ResponseDecodingException);
 		assertThat(malformedQueries.get(), is(1));
 		assertThat(goodQueries.get(), is(0));
 	}
@@ -1139,8 +1220,18 @@ public class NativeBCPKIXOCSPTest
 			OCSPCheckingMode ocspMode, OCSPResponder[] responders,
 			boolean useAllEnabled, RevocationCheckingOrder order) throws Exception
 	{
+		return validateCombined(crls, CrlCheckingMode.REQUIRE, ocspMode,
+				responders, useAllEnabled, order);
+	}
+
+	private ValidationResult validateCombined(CertStore crls,
+			CrlCheckingMode crlMode, OCSPCheckingMode ocspMode,
+			OCSPResponder[] responders, boolean useAllEnabled,
+			RevocationCheckingOrder order) throws Exception
+	{
 		return validator.validateWithCRLsAndOCSP(
-				new X509Certificate[] {target, root}, anchors, crls, ocspMode,
+				new X509Certificate[] {target, root}, anchors, crls,
+				crlMode, ocspMode,
 				responders, true, 1000, -1, null, false, useAllEnabled, order);
 	}
 
@@ -1148,7 +1239,17 @@ public class NativeBCPKIXOCSPTest
 			OCSPCheckingMode ocspMode, OCSPResponder[] responders,
 			boolean useAllEnabled, RevocationCheckingOrder order) throws Exception
 	{
-		return validator.validateWithCRLsAndOCSP(certPath, anchors, crls, ocspMode,
+		return validateCombined(certPath, crls, CrlCheckingMode.REQUIRE, ocspMode,
+				responders, useAllEnabled, order);
+	}
+
+	private ValidationResult validateCombined(CertPath certPath, CertStore crls,
+			CrlCheckingMode crlMode, OCSPCheckingMode ocspMode,
+			OCSPResponder[] responders, boolean useAllEnabled,
+			RevocationCheckingOrder order) throws Exception
+	{
+		return validator.validateWithCRLsAndOCSP(certPath, anchors, crls,
+				crlMode, ocspMode,
 				responders, true, 1000, -1, null, false, useAllEnabled, order);
 	}
 
