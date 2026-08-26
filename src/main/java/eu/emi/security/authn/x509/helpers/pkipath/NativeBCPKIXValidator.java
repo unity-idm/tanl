@@ -4,11 +4,16 @@
  */
 package eu.emi.security.authn.x509.helpers.pkipath;
 
+import java.io.File;
 import java.io.IOException;
+import java.net.HttpURLConnection;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
 import java.security.InvalidAlgorithmParameterException;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.security.SignatureException;
 import java.security.cert.CertPath;
 import java.security.cert.CertPathBuilder;
@@ -19,6 +24,7 @@ import java.security.cert.CertPathValidatorException.BasicReason;
 import java.security.cert.CertStore;
 import java.security.cert.Certificate;
 import java.security.cert.CertificateException;
+import java.security.cert.CertificateEncodingException;
 import java.security.cert.CertificateExpiredException;
 import java.security.cert.CertificateFactory;
 import java.security.cert.CertificateNotYetValidException;
@@ -43,19 +49,27 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
+import org.bouncycastle.asn1.ocsp.OCSPObjectIdentifiers;
+import org.bouncycastle.asn1.x509.Extension;
 import org.bouncycastle.cert.ocsp.BasicOCSPResp;
 import org.bouncycastle.cert.ocsp.OCSPException;
 import org.bouncycastle.cert.ocsp.OCSPReq;
+import org.bouncycastle.cert.ocsp.OCSPResp;
 import org.bouncycastle.cert.ocsp.SingleResp;
 import org.bouncycastle.jcajce.PKIXExtendedParameters;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 
 import eu.emi.security.authn.x509.OCSPResponder;
+import eu.emi.security.authn.x509.StoreUpdateListener;
+import eu.emi.security.authn.x509.StoreUpdateListener.Severity;
 import eu.emi.security.authn.x509.ValidationError;
 import eu.emi.security.authn.x509.ValidationErrorCode;
 import eu.emi.security.authn.x509.ValidationResult;
 import eu.emi.security.authn.x509.ValidationStage;
+import eu.emi.security.authn.x509.helpers.ObserversHandler;
 import eu.emi.security.authn.x509.helpers.ocsp.OCSPClientImpl;
+import eu.emi.security.authn.x509.helpers.ocsp.OCSPClientImpl.OCSPHTTPException;
+import eu.emi.security.authn.x509.helpers.ocsp.OCSPClientImpl.OCSPResponseDecodingException;
 import eu.emi.security.authn.x509.helpers.ocsp.OCSPResponseStructure;
 import eu.emi.security.authn.x509.impl.CertificateUtils;
 
@@ -71,6 +85,21 @@ final class NativeBCPKIXValidator
 	private static final String BC = BouncyCastleProvider.PROVIDER_NAME;
 	private final NativeOCSPResponseCache<OCSPCacheKey> ocspResponseCache =
 			new NativeOCSPResponseCache<OCSPCacheKey>();
+	private final NativeOCSPResponderFailureCache ocspResponderFailureCache =
+			new NativeOCSPResponderFailureCache();
+	private final ObserversHandler observers;
+
+	NativeBCPKIXValidator()
+	{
+		this(new ObserversHandler());
+	}
+
+	NativeBCPKIXValidator(ObserversHandler observers)
+	{
+		if (observers == null)
+			throw new IllegalArgumentException("Observers handler must not be null");
+		this.observers = observers;
+	}
 
 	static
 	{
@@ -144,6 +173,32 @@ final class NativeBCPKIXValidator
 			Set<TrustAnchor> configuredAnchors, OCSPResponder responder,
 			int timeout, int cacheTtl) throws CertificateException
 	{
+		return validateWithOCSP(input, configuredAnchors, responder, timeout,
+				cacheTtl, null);
+	}
+
+	/**
+	 * Builds and validates a path using configured transport controls and
+	 * optional memory and persistent raw-response caching.
+	 */
+	ValidationResult validateWithOCSP(X509Certificate[] input,
+			Set<TrustAnchor> configuredAnchors, OCSPResponder responder,
+			int timeout, int cacheTtl, String diskCachePath)
+			throws CertificateException
+	{
+		return validateWithOCSP(input, configuredAnchors, responder, timeout,
+				cacheTtl, diskCachePath, false);
+	}
+
+	/**
+	 * Builds and validates a path using configured transport, cache, and nonce
+	 * controls. Nonce-enabled requests bypass response caching.
+	 */
+	ValidationResult validateWithOCSP(X509Certificate[] input,
+			Set<TrustAnchor> configuredAnchors, OCSPResponder responder,
+			int timeout, int cacheTtl, String diskCachePath, boolean useNonce)
+			throws CertificateException
+	{
 		if (timeout < 0)
 			return invalidInput(input, -1, "OCSP timeout must not be negative");
 		if (responder == null)
@@ -156,12 +211,63 @@ final class NativeBCPKIXValidator
 		{
 			return validate(input, configuredAnchors, null,
 					responder.getAddress().toURI(), responder.getCertificate(), false,
-					new OCSPFetchPolicy(timeout, cacheTtl));
+					new OCSPFetchPolicy(timeout, cacheTtl, diskCachePath, useNonce));
 		} catch (URISyntaxException e)
 		{
 			return invalid(input, -1, ValidationErrorCode.INVALID_INPUT,
 					ValidationStage.INPUT, e);
 		}
+	}
+
+	/**
+	 * Builds and validates a path using the first responder selected from the
+	 * configured and certificate-discovered responder groups.
+	 */
+	ValidationResult validateWithOCSP(X509Certificate[] input,
+			Set<TrustAnchor> configuredAnchors, OCSPResponder[] localResponders,
+			boolean preferLocalResponders, int timeout, int cacheTtl,
+			String diskCachePath, boolean useNonce) throws CertificateException
+	{
+		return validateWithOrderedOCSP(input, configuredAnchors, localResponders,
+				preferLocalResponders, timeout, cacheTtl, diskCachePath, useNonce,
+				false);
+	}
+
+	/**
+	 * Builds and validates a path using OCSP when a responder is reachable.
+	 * Missing responders and exhausted transport failures are accepted, while
+	 * every received response remains subject to strict native validation.
+	 */
+	ValidationResult validateWithOCSPIfAvailable(X509Certificate[] input,
+			Set<TrustAnchor> configuredAnchors, OCSPResponder[] localResponders,
+			boolean preferLocalResponders, int timeout, int cacheTtl,
+			String diskCachePath, boolean useNonce) throws CertificateException
+	{
+		return validateWithOrderedOCSP(input, configuredAnchors, localResponders,
+				preferLocalResponders, timeout, cacheTtl, diskCachePath, useNonce,
+				true);
+	}
+
+	private ValidationResult validateWithOrderedOCSP(X509Certificate[] input,
+			Set<TrustAnchor> configuredAnchors, OCSPResponder[] localResponders,
+			boolean preferLocalResponders, int timeout, int cacheTtl,
+			String diskCachePath, boolean useNonce, boolean softFailUnavailable)
+			throws CertificateException
+	{
+		if (timeout < 0)
+			return invalidInput(input, -1, "OCSP timeout must not be negative");
+		List<OCSPResponderTarget> configured;
+		try
+		{
+			configured = configuredResponderTargets(localResponders);
+		} catch (IllegalArgumentException e)
+		{
+			return invalid(input, -1, ValidationErrorCode.INVALID_INPUT,
+					ValidationStage.INPUT, e);
+		}
+		return validate(input, configuredAnchors, null, null, null, true,
+				new OCSPFetchPolicy(timeout, cacheTtl, diskCachePath, useNonce,
+						configured, preferLocalResponders, softFailUnavailable));
 	}
 
 	/**
@@ -192,10 +298,34 @@ final class NativeBCPKIXValidator
 			Set<TrustAnchor> configuredAnchors, int timeout, int cacheTtl)
 			throws CertificateException
 	{
+		return validateWithOCSPFromAIA(input, configuredAnchors, timeout,
+				cacheTtl, null);
+	}
+
+	/**
+	 * Builds and validates a path using discovered responders and optional
+	 * memory and persistent raw-response caching.
+	 */
+	ValidationResult validateWithOCSPFromAIA(X509Certificate[] input,
+			Set<TrustAnchor> configuredAnchors, int timeout, int cacheTtl,
+			String diskCachePath) throws CertificateException
+	{
+		return validateWithOCSPFromAIA(input, configuredAnchors, timeout,
+				cacheTtl, diskCachePath, false);
+	}
+
+	/**
+	 * Builds and validates a path using discovered responders and configured
+	 * transport, cache, and nonce controls.
+	 */
+	ValidationResult validateWithOCSPFromAIA(X509Certificate[] input,
+			Set<TrustAnchor> configuredAnchors, int timeout, int cacheTtl,
+			String diskCachePath, boolean useNonce) throws CertificateException
+	{
 		if (timeout < 0)
 			return invalidInput(input, -1, "OCSP timeout must not be negative");
 		return validate(input, configuredAnchors, null, null, null, true,
-				new OCSPFetchPolicy(timeout, cacheTtl));
+				new OCSPFetchPolicy(timeout, cacheTtl, diskCachePath, useNonce));
 	}
 
 	private ValidationResult validate(X509Certificate[] input,
@@ -318,6 +448,32 @@ final class NativeBCPKIXValidator
 			Set<TrustAnchor> configuredAnchors, OCSPResponder responder,
 			int timeout, int cacheTtl) throws CertificateException
 	{
+		return validateWithOCSP(suppliedPath, configuredAnchors, responder,
+				timeout, cacheTtl, null);
+	}
+
+	/**
+	 * Validates an asserted path using configured transport controls and
+	 * optional memory and persistent raw-response caching.
+	 */
+	ValidationResult validateWithOCSP(CertPath suppliedPath,
+			Set<TrustAnchor> configuredAnchors, OCSPResponder responder,
+			int timeout, int cacheTtl, String diskCachePath)
+			throws CertificateException
+	{
+		return validateWithOCSP(suppliedPath, configuredAnchors, responder,
+				timeout, cacheTtl, diskCachePath, false);
+	}
+
+	/**
+	 * Validates an asserted path using configured transport, cache, and nonce
+	 * controls. Nonce-enabled requests bypass response caching.
+	 */
+	ValidationResult validateWithOCSP(CertPath suppliedPath,
+			Set<TrustAnchor> configuredAnchors, OCSPResponder responder,
+			int timeout, int cacheTtl, String diskCachePath, boolean useNonce)
+			throws CertificateException
+	{
 		if (timeout < 0)
 			return invalidInput(null, -1, "OCSP timeout must not be negative");
 		if (responder == null)
@@ -330,12 +486,63 @@ final class NativeBCPKIXValidator
 		{
 			return validate(suppliedPath, configuredAnchors, null,
 					responder.getAddress().toURI(), responder.getCertificate(), false,
-					new OCSPFetchPolicy(timeout, cacheTtl));
+					new OCSPFetchPolicy(timeout, cacheTtl, diskCachePath, useNonce));
 		} catch (URISyntaxException e)
 		{
 			return invalid(null, -1, ValidationErrorCode.INVALID_INPUT,
 					ValidationStage.INPUT, e);
 		}
+	}
+
+	/**
+	 * Validates an asserted path using the first responder selected from the
+	 * configured and certificate-discovered responder groups.
+	 */
+	ValidationResult validateWithOCSP(CertPath suppliedPath,
+			Set<TrustAnchor> configuredAnchors, OCSPResponder[] localResponders,
+			boolean preferLocalResponders, int timeout, int cacheTtl,
+			String diskCachePath, boolean useNonce) throws CertificateException
+	{
+		return validateWithOrderedOCSP(suppliedPath, configuredAnchors,
+				localResponders, preferLocalResponders, timeout, cacheTtl,
+				diskCachePath, useNonce, false);
+	}
+
+	/**
+	 * Validates an asserted path using OCSP when a responder is reachable.
+	 * Missing responders and exhausted transport failures are accepted, while
+	 * every received response remains subject to strict native validation.
+	 */
+	ValidationResult validateWithOCSPIfAvailable(CertPath suppliedPath,
+			Set<TrustAnchor> configuredAnchors, OCSPResponder[] localResponders,
+			boolean preferLocalResponders, int timeout, int cacheTtl,
+			String diskCachePath, boolean useNonce) throws CertificateException
+	{
+		return validateWithOrderedOCSP(suppliedPath, configuredAnchors,
+				localResponders, preferLocalResponders, timeout, cacheTtl,
+				diskCachePath, useNonce, true);
+	}
+
+	private ValidationResult validateWithOrderedOCSP(CertPath suppliedPath,
+			Set<TrustAnchor> configuredAnchors, OCSPResponder[] localResponders,
+			boolean preferLocalResponders, int timeout, int cacheTtl,
+			String diskCachePath, boolean useNonce, boolean softFailUnavailable)
+			throws CertificateException
+	{
+		if (timeout < 0)
+			return invalidInput(null, -1, "OCSP timeout must not be negative");
+		List<OCSPResponderTarget> configured;
+		try
+		{
+			configured = configuredResponderTargets(localResponders);
+		} catch (IllegalArgumentException e)
+		{
+			return invalid(null, -1, ValidationErrorCode.INVALID_INPUT,
+					ValidationStage.INPUT, e);
+		}
+		return validate(suppliedPath, configuredAnchors, null, null, null, true,
+				new OCSPFetchPolicy(timeout, cacheTtl, diskCachePath, useNonce,
+						configured, preferLocalResponders, softFailUnavailable));
 	}
 
 	/**
@@ -366,10 +573,34 @@ final class NativeBCPKIXValidator
 			Set<TrustAnchor> configuredAnchors, int timeout, int cacheTtl)
 			throws CertificateException
 	{
+		return validateWithOCSPFromAIA(suppliedPath, configuredAnchors, timeout,
+				cacheTtl, null);
+	}
+
+	/**
+	 * Validates an asserted path using discovered responders and optional
+	 * memory and persistent raw-response caching.
+	 */
+	ValidationResult validateWithOCSPFromAIA(CertPath suppliedPath,
+			Set<TrustAnchor> configuredAnchors, int timeout, int cacheTtl,
+			String diskCachePath) throws CertificateException
+	{
+		return validateWithOCSPFromAIA(suppliedPath, configuredAnchors, timeout,
+				cacheTtl, diskCachePath, false);
+	}
+
+	/**
+	 * Validates an asserted path using discovered responders and configured
+	 * transport, cache, and nonce controls.
+	 */
+	ValidationResult validateWithOCSPFromAIA(CertPath suppliedPath,
+			Set<TrustAnchor> configuredAnchors, int timeout, int cacheTtl,
+			String diskCachePath, boolean useNonce) throws CertificateException
+	{
 		if (timeout < 0)
 			return invalidInput(null, -1, "OCSP timeout must not be negative");
 		return validate(suppliedPath, configuredAnchors, null, null, null, true,
-				new OCSPFetchPolicy(timeout, cacheTtl));
+				new OCSPFetchPolicy(timeout, cacheTtl, diskCachePath, useNonce));
 	}
 
 	private ValidationResult validate(CertPath suppliedPath,
@@ -579,11 +810,11 @@ final class NativeBCPKIXValidator
 			if (issuer == null)
 				return ocspDiscoveryFailure(diagnosticChain, path, i,
 						"OCSP validation requires the issuer trust-anchor certificate", null);
-			ValidationResult failure = validateFetchedOCSPEdge(certificate, issuer,
+			OCSPResponderAttempt attempt = validateFetchedOCSPEdge(certificate, issuer,
 					responder, responderCertificate, fetchPolicy, certificateStore,
 					diagnosticChain, i);
-			if (failure != null)
-				return failure;
+			if (attempt.failure != null)
+				return attempt.failure;
 		}
 		return null;
 	}
@@ -591,8 +822,9 @@ final class NativeBCPKIXValidator
 	/**
 	 * BC exposes only one responder URI per checker. Validate one already
 	 * base-validated certificate/issuer edge at a time so each certificate can
-	 * use its own AIA responder without changing global security properties.
-	 * A non-null return value is the first strict OCSP failure.
+	 * select its own ordered configured/AIA responder without changing global
+	 * security properties. A non-null return value is the first strict OCSP
+	 * failure.
 	 */
 	private ValidationResult validateDiscoveredOCSP(CertPath path,
 			TrustAnchor selectedAnchor, CertStore certificateStore,
@@ -607,6 +839,15 @@ final class NativeBCPKIXValidator
 				return ocspDiscoveryFailure(diagnosticChain, path, i,
 						"OCSP validation requires the issuer trust-anchor certificate", null);
 
+			if (fetchPolicy != null)
+			{
+				ValidationResult failure = validateOrderedOCSPEdge(certificate, issuer,
+						path, fetchPolicy, certificateStore, diagnosticChain, i);
+				if (failure != null)
+					return failure;
+				continue;
+			}
+
 			List<URI> responders;
 			try
 			{
@@ -619,19 +860,9 @@ final class NativeBCPKIXValidator
 			if (responders.size() != 1)
 				return ocspDiscoveryFailure(diagnosticChain, path, i,
 						"Strict native OCSP requires exactly one discovered responder", null);
-
 			CertPath edgePath = toCertPath(Collections.singletonList(certificate));
 			Set<TrustAnchor> edgeAnchor = Collections.singleton(
 					new TrustAnchor(issuer, null));
-			if (fetchPolicy != null)
-			{
-				ValidationResult failure = validateFetchedOCSPEdge(certificate, issuer,
-						responders.get(0), null, fetchPolicy, certificateStore,
-						diagnosticChain, i);
-				if (failure != null)
-					return failure;
-				continue;
-			}
 			try
 			{
 				validateNativeWithOCSP(edgePath, edgeAnchor, certificateStore,
@@ -652,7 +883,97 @@ final class NativeBCPKIXValidator
 		return null;
 	}
 
-	private ValidationResult validateFetchedOCSPEdge(X509Certificate certificate,
+	private ValidationResult validateOrderedOCSPEdge(X509Certificate certificate,
+			X509Certificate issuer, CertPath path, OCSPFetchPolicy fetchPolicy,
+			CertStore certificateStore, X509Certificate[] diagnosticChain,
+			int position)
+	{
+		List<OCSPResponderTarget> first;
+		List<OCSPResponderTarget> second;
+		if (fetchPolicy.preferLocalResponders)
+		{
+			first = fetchPolicy.localResponders;
+			second = null;
+		} else
+		{
+			try
+			{
+				first = discoveredResponderTargets(certificate);
+			} catch (CertificateException e)
+			{
+				return ocspDiscoveryFailure(diagnosticChain, path, position,
+						"Can not discover an OCSP responder", e);
+			}
+			second = fetchPolicy.localResponders;
+		}
+
+		OCSPResponderGroupResult firstResult = validateResponderGroup(first,
+				certificate, issuer, fetchPolicy, certificateStore, diagnosticChain,
+				position);
+		if (firstResult.success)
+			return null;
+		if (firstResult.terminalFailure)
+			return firstResult.failure;
+
+		if (second == null)
+			try
+			{
+				second = discoveredResponderTargets(certificate);
+			} catch (CertificateException e)
+			{
+				return ocspDiscoveryFailure(diagnosticChain, path, position,
+						"Can not discover an OCSP responder", e);
+			}
+		OCSPResponderGroupResult secondResult = validateResponderGroup(second,
+				certificate, issuer, fetchPolicy, certificateStore, diagnosticChain,
+				position);
+		if (secondResult.success)
+			return null;
+		if (secondResult.terminalFailure)
+			return secondResult.failure;
+		if (fetchPolicy.softFailUnavailable)
+			return null;
+		if (secondResult.failure != null)
+			return secondResult.failure;
+		if (firstResult.failure != null)
+			return firstResult.failure;
+		return ocspDiscoveryFailure(diagnosticChain, path, position,
+				"Strict native OCSP requires at least one responder", null);
+	}
+
+	private List<OCSPResponderTarget> discoveredResponderTargets(
+			X509Certificate certificate) throws CertificateException
+	{
+		List<URI> discovered = OCSPResponderDiscovery.getResponderURIs(certificate);
+		List<OCSPResponderTarget> result =
+				new ArrayList<OCSPResponderTarget>(discovered.size());
+		for (URI responder: discovered)
+			result.add(new OCSPResponderTarget(responder, null));
+		return result;
+	}
+
+	private OCSPResponderGroupResult validateResponderGroup(
+			List<OCSPResponderTarget> responders, X509Certificate certificate,
+			X509Certificate issuer, OCSPFetchPolicy fetchPolicy,
+			CertStore certificateStore, X509Certificate[] diagnosticChain,
+			int position)
+	{
+		ValidationResult lastTransportFailure = null;
+		for (OCSPResponderTarget responder: responders)
+		{
+			OCSPResponderAttempt attempt = validateFetchedOCSPEdge(certificate, issuer,
+					responder.responder, responder.certificate, fetchPolicy,
+					certificateStore, diagnosticChain, position);
+			if (attempt.failure == null)
+				return OCSPResponderGroupResult.success();
+			if (!attempt.retryableTransportFailure)
+				return OCSPResponderGroupResult.terminal(attempt.failure);
+			lastTransportFailure = attempt.failure;
+		}
+		return OCSPResponderGroupResult.retryable(lastTransportFailure);
+	}
+
+	private OCSPResponderAttempt validateFetchedOCSPEdge(X509Certificate certificate,
 			X509Certificate issuer, URI responder,
 			X509Certificate responderCertificate, OCSPFetchPolicy fetchPolicy,
 			CertStore certificateStore, X509Certificate[] diagnosticChain,
@@ -663,58 +984,155 @@ final class NativeBCPKIXValidator
 				new TrustAnchor(issuer, null));
 		OCSPCacheKey cacheKey = new OCSPCacheKey(responder, certificate, issuer,
 				responderCertificate);
-		byte[] cachedResponse = ocspResponseCache.get(cacheKey, fetchPolicy.cacheTtl);
+		byte[] cachedResponse = fetchPolicy.useNonce ? null :
+				ocspResponseCache.get(cacheKey, fetchPolicy.cacheTtl,
+						fetchPolicy.diskCache, cacheKey.diskKey);
 		if (cachedResponse != null)
 		{
 			try
 			{
 				validateNativeWithOCSPResponse(edgePath, edgeAnchor, certificateStore,
 						certificate, cachedResponse, responderCertificate);
-				return null;
+				return OCSPResponderAttempt.success();
 			} catch (CertPathValidatorException e)
 			{
-				ocspResponseCache.remove(cacheKey);
+				ocspResponseCache.remove(cacheKey, fetchPolicy.diskCache,
+						cacheKey.diskKey);
 			} catch (InvalidAlgorithmParameterException e)
 			{
 				throw new IllegalStateException(
 						"Native BC PKIX validator rejected cached OCSP parameters", e);
 			} catch (RuntimeException e)
 			{
-				ocspResponseCache.remove(cacheKey);
+				ocspResponseCache.remove(cacheKey, fetchPolicy.diskCache,
+						cacheKey.diskKey);
 			}
 		}
+		if (ocspResponderFailureCache.contains(responder, fetchPolicy.cacheTtl,
+				fetchPolicy.diskCache))
+		{
+			IOException failure = new IOException(
+					"OCSP responder has a cached transport failure: " + responder);
+			return notifiedOCSPFailure(responder, invalid(diagnosticChain, position,
+					ValidationErrorCode.PKIX_FAILURE, ValidationStage.REVOCATION,
+					failure), true);
+		}
+		OCSPClientImpl client = new OCSPClientImpl();
+		OCSPReq request;
 		try
 		{
-			OCSPClientImpl client = new OCSPClientImpl();
-			OCSPReq request = client.createRequest(certificate, issuer, null, false);
-			OCSPResponseStructure fetched = client.send(responder.toURL(), request,
+			request = client.createRequest(certificate, issuer, null,
+					fetchPolicy.useNonce);
+		} catch (OCSPException e)
+		{
+			return notifiedOCSPFailure(responder, invalid(diagnosticChain, position,
+					ValidationErrorCode.PKIX_FAILURE, ValidationStage.REVOCATION, e), false);
+		} catch (RuntimeException e)
+		{
+			return notifiedOCSPFailure(responder, invalid(diagnosticChain, position,
+					ValidationErrorCode.PKIX_FAILURE, ValidationStage.REVOCATION, e), false);
+		}
+
+		OCSPResponseStructure fetched;
+		try
+		{
+			fetched = client.send(responder.toURL(), request,
 					fetchPolicy.timeout);
+		} catch (OCSPResponseDecodingException e)
+		{
+			ocspResponderFailureCache.remove(responder, fetchPolicy.diskCache);
+			return notifiedOCSPFailure(responder, invalid(diagnosticChain, position,
+					ValidationErrorCode.PKIX_FAILURE, ValidationStage.REVOCATION, e), false);
+		} catch (IOException e)
+		{
+			if (isResponderWideTransportFailure(e))
+				ocspResponderFailureCache.put(responder, fetchPolicy.cacheTtl,
+						fetchPolicy.diskCache);
+			else
+				ocspResponderFailureCache.remove(responder, fetchPolicy.diskCache);
+			return notifiedOCSPFailure(responder, invalid(diagnosticChain, position,
+					ValidationErrorCode.PKIX_FAILURE, ValidationStage.REVOCATION, e), true);
+		} catch (RuntimeException e)
+		{
+			return notifiedOCSPFailure(responder, invalid(diagnosticChain, position,
+					ValidationErrorCode.PKIX_FAILURE, ValidationStage.REVOCATION, e), false);
+		}
+		ocspResponderFailureCache.remove(responder, fetchPolicy.diskCache);
+
+		try
+		{
+			if (fetchPolicy.useNonce)
+				validateResponseNonce(request, fetched.getResponse());
 			byte[] response = fetched.getResponse().getEncoded();
 			validateNativeWithOCSPResponse(edgePath, edgeAnchor, certificateStore,
 					certificate, response, responderCertificate);
-			ocspResponseCache.put(cacheKey, response, responseExpiry(fetched),
-					fetchPolicy.cacheTtl);
-			return null;
+			if (!fetchPolicy.useNonce)
+				ocspResponseCache.put(cacheKey, response, responseExpiry(fetched),
+						fetchPolicy.cacheTtl, fetchPolicy.diskCache, cacheKey.diskKey);
+			return OCSPResponderAttempt.success();
 		} catch (CertPathValidatorException e)
 		{
-			return invalidRevocationValidation(diagnosticChain, e, position);
+			return OCSPResponderAttempt.failure(
+					invalidRevocationValidation(diagnosticChain, e, position), false);
 		} catch (InvalidAlgorithmParameterException e)
 		{
 			throw new IllegalStateException(
 					"Native BC PKIX validator rejected prefetched OCSP parameters", e);
 		} catch (IOException e)
 		{
-			return invalid(diagnosticChain, position, ValidationErrorCode.PKIX_FAILURE,
-					ValidationStage.REVOCATION, e);
+			return notifiedOCSPFailure(responder, invalid(diagnosticChain, position,
+					ValidationErrorCode.PKIX_FAILURE, ValidationStage.REVOCATION, e), false);
 		} catch (OCSPException e)
 		{
-			return invalid(diagnosticChain, position, ValidationErrorCode.PKIX_FAILURE,
-					ValidationStage.REVOCATION, e);
+			return notifiedOCSPFailure(responder, invalid(diagnosticChain, position,
+					ValidationErrorCode.PKIX_FAILURE, ValidationStage.REVOCATION, e), false);
 		} catch (RuntimeException e)
 		{
-			return invalid(diagnosticChain, position, ValidationErrorCode.PKIX_FAILURE,
-					ValidationStage.REVOCATION, e);
+			return OCSPResponderAttempt.failure(invalid(diagnosticChain, position,
+					ValidationErrorCode.PKIX_FAILURE, ValidationStage.REVOCATION, e), false);
 		}
+	}
+
+	private boolean isResponderWideTransportFailure(IOException failure)
+	{
+		if (!(failure instanceof OCSPHTTPException))
+			return true;
+		int status = ((OCSPHTTPException) failure).getStatusCode();
+		return status == HttpURLConnection.HTTP_BAD_GATEWAY ||
+				status == HttpURLConnection.HTTP_UNAVAILABLE ||
+				status == HttpURLConnection.HTTP_GATEWAY_TIMEOUT;
+	}
+
+	private OCSPResponderAttempt notifiedOCSPFailure(URI responder,
+			ValidationResult failure, boolean retryableTransportFailure)
+	{
+		Throwable cause = failure.getPrimaryError().getCause();
+		Exception notificationCause = cause instanceof Exception ?
+				(Exception) cause : new Exception(
+						failure.getPrimaryError().getProviderMessage(), cause);
+		observers.notifyObservers(responder.toString(), StoreUpdateListener.OCSP,
+				Severity.WARNING, notificationCause);
+		return OCSPResponderAttempt.failure(failure, retryableTransportFailure);
+	}
+
+	private void validateResponseNonce(OCSPReq request, OCSPResp response)
+			throws OCSPException
+	{
+		Extension requested = request.getExtension(
+				OCSPObjectIdentifiers.id_pkix_ocsp_nonce);
+		if (requested == null)
+			throw new IllegalStateException("Nonce-enabled OCSP request has no nonce");
+		Object responseBody = response.getResponseObject();
+		if (!(responseBody instanceof BasicOCSPResp))
+			throw new OCSPException("Nonce-enabled OCSP response has no basic response");
+		Extension received = ((BasicOCSPResp) responseBody).getExtension(
+				OCSPObjectIdentifiers.id_pkix_ocsp_nonce);
+		if (received == null)
+			throw new OCSPException("Nonce-enabled OCSP response has no nonce");
+		byte[] requestedValue = requested.getExtnValue().getOctets();
+		byte[] receivedValue = received.getExtnValue().getOctets();
+		if (!MessageDigest.isEqual(requestedValue, receivedValue))
+			throw new OCSPException("OCSP response nonce does not match the request");
 	}
 
 	private Date responseExpiry(OCSPResponseStructure response)
@@ -748,15 +1166,139 @@ final class NativeBCPKIXValidator
 				selectedAnchor.getTrustedCert();
 	}
 
+	private List<OCSPResponderTarget> configuredResponderTargets(
+			OCSPResponder[] responders)
+	{
+		if (responders == null)
+			throw new IllegalArgumentException(
+					"Configured OCSP responder array must not be null");
+		List<OCSPResponderTarget> result =
+				new ArrayList<OCSPResponderTarget>(responders.length);
+		for (OCSPResponder responder: responders)
+		{
+			if (responder == null)
+				throw new IllegalArgumentException(
+						"Configured OCSP responder must not be null");
+			if (responder.getAddress() == null)
+				throw new IllegalArgumentException(
+						"Configured OCSP responder address must not be null");
+			if (responder.getCertificate() == null)
+				throw new IllegalArgumentException(
+						"Configured OCSP responder certificate must not be null");
+			String protocol = responder.getAddress().getProtocol();
+			if (!"http".equalsIgnoreCase(protocol) &&
+					!"https".equalsIgnoreCase(protocol))
+				throw new IllegalArgumentException(
+						"Configured OCSP responder must use HTTP or HTTPS");
+			try
+			{
+				result.add(new OCSPResponderTarget(responder.getAddress().toURI(),
+						responder.getCertificate()));
+			} catch (URISyntaxException e)
+			{
+				throw new IllegalArgumentException(
+						"Configured OCSP responder address is not a valid URI", e);
+			}
+		}
+		return result;
+	}
+
 	private static final class OCSPFetchPolicy
 	{
 		private final int timeout;
 		private final int cacheTtl;
+		private final File diskCache;
+		private final boolean useNonce;
+		private final List<OCSPResponderTarget> localResponders;
+		private final boolean preferLocalResponders;
+		private final boolean softFailUnavailable;
 
-		private OCSPFetchPolicy(int timeout, int cacheTtl)
+		private OCSPFetchPolicy(int timeout, int cacheTtl, String diskCachePath,
+				boolean useNonce)
+		{
+			this(timeout, cacheTtl, diskCachePath, useNonce,
+					Collections.<OCSPResponderTarget>emptyList(), true, false);
+		}
+
+		private OCSPFetchPolicy(int timeout, int cacheTtl, String diskCachePath,
+				boolean useNonce, List<OCSPResponderTarget> localResponders,
+				boolean preferLocalResponders, boolean softFailUnavailable)
 		{
 			this.timeout = timeout;
 			this.cacheTtl = cacheTtl;
+			this.diskCache = diskCachePath == null || diskCachePath.trim().isEmpty() ?
+					null : new File(diskCachePath);
+			this.useNonce = useNonce;
+			this.localResponders = Collections.unmodifiableList(
+					new ArrayList<OCSPResponderTarget>(localResponders));
+			this.preferLocalResponders = preferLocalResponders;
+			this.softFailUnavailable = softFailUnavailable;
+		}
+	}
+
+	private static final class OCSPResponderTarget
+	{
+		private final URI responder;
+		private final X509Certificate certificate;
+
+		private OCSPResponderTarget(URI responder, X509Certificate certificate)
+		{
+			this.responder = responder;
+			this.certificate = certificate;
+		}
+	}
+
+	private static final class OCSPResponderAttempt
+	{
+		private final ValidationResult failure;
+		private final boolean retryableTransportFailure;
+
+		private OCSPResponderAttempt(ValidationResult failure,
+				boolean retryableTransportFailure)
+		{
+			this.failure = failure;
+			this.retryableTransportFailure = retryableTransportFailure;
+		}
+
+		private static OCSPResponderAttempt success()
+		{
+			return new OCSPResponderAttempt(null, false);
+		}
+
+		private static OCSPResponderAttempt failure(ValidationResult failure,
+				boolean retryableTransportFailure)
+		{
+			return new OCSPResponderAttempt(failure, retryableTransportFailure);
+		}
+	}
+
+	private static final class OCSPResponderGroupResult
+	{
+		private final boolean success;
+		private final boolean terminalFailure;
+		private final ValidationResult failure;
+
+		private OCSPResponderGroupResult(boolean success, boolean terminalFailure,
+				ValidationResult failure)
+		{
+			this.success = success;
+			this.terminalFailure = terminalFailure;
+			this.failure = failure;
+		}
+
+		private static OCSPResponderGroupResult success()
+		{
+			return new OCSPResponderGroupResult(true, false, null);
+		}
+
+		private static OCSPResponderGroupResult terminal(ValidationResult failure)
+		{
+			return new OCSPResponderGroupResult(false, true, failure);
+		}
+
+		private static OCSPResponderGroupResult retryable(ValidationResult failure)
+		{
+			return new OCSPResponderGroupResult(false, false, failure);
 		}
 	}
 
@@ -766,6 +1308,7 @@ final class NativeBCPKIXValidator
 		private final X509Certificate certificate;
 		private final X509Certificate issuer;
 		private final X509Certificate responderCertificate;
+		private final String diskKey;
 
 		private OCSPCacheKey(URI responder, X509Certificate certificate,
 				X509Certificate issuer, X509Certificate responderCertificate)
@@ -774,6 +1317,7 @@ final class NativeBCPKIXValidator
 			this.certificate = certificate;
 			this.issuer = issuer;
 			this.responderCertificate = responderCertificate;
+			this.diskKey = createDiskKey();
 		}
 
 		@Override
@@ -794,6 +1338,51 @@ final class NativeBCPKIXValidator
 		public int hashCode()
 		{
 			return Objects.hash(responder, certificate, issuer, responderCertificate);
+		}
+
+		private String createDiskKey()
+		{
+			try
+			{
+				MessageDigest digest = MessageDigest.getInstance("SHA-256");
+				updateDigest(digest, responder.toASCIIString().getBytes(
+						StandardCharsets.UTF_8));
+				updateDigest(digest, certificate.getEncoded());
+				updateDigest(digest, issuer.getEncoded());
+				updateDigest(digest, responderCertificate == null ? null :
+						responderCertificate.getEncoded());
+				return toHex(digest.digest());
+			} catch (NoSuchAlgorithmException e)
+			{
+				throw new IllegalStateException("SHA-256 digest is unavailable", e);
+			} catch (CertificateEncodingException e)
+			{
+				return null;
+			}
+		}
+
+		private void updateDigest(MessageDigest digest, byte[] value)
+		{
+			int length = value == null ? -1 : value.length;
+			digest.update((byte) (length >>> 24));
+			digest.update((byte) (length >>> 16));
+			digest.update((byte) (length >>> 8));
+			digest.update((byte) length);
+			if (value != null)
+				digest.update(value);
+		}
+
+		private String toHex(byte[] value)
+		{
+			char[] result = new char[value.length * 2];
+			char[] digits = "0123456789abcdef".toCharArray();
+			for (int i=0; i<value.length; i++)
+			{
+				int unsigned = value[i] & 0xff;
+				result[i*2] = digits[unsigned >>> 4];
+				result[i*2+1] = digits[unsigned & 0x0f];
+			}
+			return new String(result);
 		}
 	}
 

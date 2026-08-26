@@ -12,10 +12,15 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.IOException;
 import java.math.BigInteger;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.net.SocketTimeoutException;
+import java.nio.file.Files;
+import java.nio.file.StandardOpenOption;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.PrivateKey;
@@ -25,20 +30,25 @@ import java.security.cert.CertPathValidatorException;
 import java.security.cert.CertificateFactory;
 import java.security.cert.TrustAnchor;
 import java.security.cert.X509Certificate;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Date;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import org.bouncycastle.asn1.DEROctetString;
+import org.bouncycastle.asn1.ocsp.OCSPObjectIdentifiers;
 import org.bouncycastle.asn1.x500.X500Name;
 import org.bouncycastle.asn1.x509.AccessDescription;
 import org.bouncycastle.asn1.x509.AuthorityInformationAccess;
 import org.bouncycastle.asn1.x509.BasicConstraints;
 import org.bouncycastle.asn1.x509.ExtendedKeyUsage;
 import org.bouncycastle.asn1.x509.Extension;
+import org.bouncycastle.asn1.x509.Extensions;
 import org.bouncycastle.asn1.x509.GeneralName;
 import org.bouncycastle.asn1.x509.KeyPurposeId;
 import org.bouncycastle.asn1.x509.KeyUsage;
@@ -49,6 +59,7 @@ import org.bouncycastle.cert.ocsp.BasicOCSPResp;
 import org.bouncycastle.cert.ocsp.BasicOCSPRespBuilder;
 import org.bouncycastle.cert.ocsp.CertificateID;
 import org.bouncycastle.cert.ocsp.CertificateStatus;
+import org.bouncycastle.cert.ocsp.OCSPReq;
 import org.bouncycastle.cert.ocsp.OCSPResp;
 import org.bouncycastle.cert.ocsp.OCSPRespBuilder;
 import org.bouncycastle.cert.ocsp.RevokedStatus;
@@ -61,15 +72,22 @@ import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
 import org.bouncycastle.operator.jcajce.JcaDigestCalculatorProviderBuilder;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.TemporaryFolder;
 
 import com.sun.net.httpserver.HttpServer;
 
 import eu.emi.security.authn.x509.OCSPResponder;
+import eu.emi.security.authn.x509.StoreUpdateListener;
+import eu.emi.security.authn.x509.StoreUpdateListener.Severity;
 import eu.emi.security.authn.x509.ValidationError;
 import eu.emi.security.authn.x509.ValidationErrorCode;
 import eu.emi.security.authn.x509.ValidationResult;
 import eu.emi.security.authn.x509.ValidationStage;
+import eu.emi.security.authn.x509.helpers.ObserversHandler;
+import eu.emi.security.authn.x509.helpers.ocsp.OCSPClientImpl.OCSPHTTPException;
+import eu.emi.security.authn.x509.helpers.ocsp.OCSPClientImpl.OCSPResponseDecodingException;
 import eu.emi.security.authn.x509.impl.CertificateUtils;
 
 public class NativeBCPKIXOCSPTest
@@ -83,6 +101,9 @@ public class NativeBCPKIXOCSPTest
 	private X509Certificate target;
 	private Set<TrustAnchor> anchors;
 	private HttpServer responderServer;
+
+	@Rule
+	public TemporaryFolder temporary = new TemporaryFolder();
 
 	@Before
 	public void setUp() throws Exception
@@ -199,6 +220,103 @@ public class NativeBCPKIXOCSPTest
 		assertTrue(first.toString(), first.isValid());
 		assertTrue(second.toString(), second.isValid());
 		assertThat(queries.get(), is(2));
+	}
+
+	@Test
+	public void shouldLoadPersistentResponseInANewValidator() throws Exception
+	{
+		File diskCache = temporary.newFolder("native-ocsp-cache");
+		responderServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+		AtomicInteger queries = new AtomicInteger();
+		addResponse("/", response(null, rootKeyPair.getPrivate(),
+				new Date(System.currentTimeMillis() + 10 * MINUTE)), queries);
+		responderServer.start();
+		OCSPResponder responder = new OCSPResponder(responderURI("/").toURL(), root);
+
+		ValidationResult first = validator.validateWithOCSP(
+				new X509Certificate[] {target, root}, anchors, responder, 1000, 60,
+				diskCache.getAbsolutePath());
+		responderServer.stop(0);
+		responderServer = null;
+		ValidationResult reloaded = new NativeBCPKIXValidator().validateWithOCSP(
+				path(target, root), anchors, responder, 1000, 60,
+				diskCache.getAbsolutePath());
+
+		assertTrue(first.toString(), first.isValid());
+		assertTrue(reloaded.toString(), reloaded.isValid());
+		assertThat(queries.get(), is(1));
+		assertThat(diskCache.listFiles().length, is(1));
+	}
+
+	@Test
+	public void shouldRecoverFromCorruptPersistentResponse() throws Exception
+	{
+		File diskCache = temporary.newFolder("corrupt-native-ocsp-cache");
+		responderServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+		AtomicInteger queries = new AtomicInteger();
+		addResponse("/", response(null, rootKeyPair.getPrivate(),
+				new Date(System.currentTimeMillis() + 10 * MINUTE)), queries);
+		responderServer.start();
+		OCSPResponder responder = new OCSPResponder(responderURI("/").toURL(), root);
+		ValidationResult first = validator.validateWithOCSP(
+				new X509Certificate[] {target, root}, anchors, responder, 1000, 60,
+				diskCache.getAbsolutePath());
+		Files.write(diskCache.listFiles()[0].toPath(), new byte[] {1, 2, 3},
+				StandardOpenOption.TRUNCATE_EXISTING);
+
+		ValidationResult recovered = new NativeBCPKIXValidator().validateWithOCSP(
+				new X509Certificate[] {target, root}, anchors, responder, 1000, 60,
+				diskCache.getAbsolutePath());
+
+		assertTrue(first.toString(), first.isValid());
+		assertTrue(recovered.toString(), recovered.isValid());
+		assertThat(queries.get(), is(2));
+		assertThat(diskCache.listFiles().length, is(1));
+	}
+
+	@Test
+	public void shouldRequireAndAcceptExactFreshNonce() throws Exception
+	{
+		File diskCache = temporary.newFolder("nonce-cache");
+		AtomicInteger queries = new AtomicInteger();
+		List<byte[]> requestedNonces = new ArrayList<byte[]>();
+		OCSPResponder responder = startNonceResponder(NonceReply.MATCH, queries,
+				requestedNonces);
+
+		ValidationResult arrayResult = validator.validateWithOCSP(
+				new X509Certificate[] {target, root}, anchors, responder, 1000, 60,
+				diskCache.getAbsolutePath(), true);
+		ValidationResult pathResult = validator.validateWithOCSP(
+				path(target, root), anchors, responder, 1000, 60,
+				diskCache.getAbsolutePath(), true);
+
+		assertTrue(arrayResult.toString(), arrayResult.isValid());
+		assertTrue(pathResult.toString(), pathResult.isValid());
+		assertThat(queries.get(), is(2));
+		assertThat(requestedNonces.size(), is(2));
+		assertThat(requestedNonces.get(0).length, is(16));
+		assertThat(requestedNonces.get(1).length, is(16));
+		assertFalse(Arrays.equals(requestedNonces.get(0), requestedNonces.get(1)));
+		assertThat(diskCache.listFiles().length, is(0));
+	}
+
+	@Test
+	public void shouldRejectMissingResponseNonce() throws Exception
+	{
+		ValidationResult result = validateWithNonce(NonceReply.OMIT);
+
+		assertNativeOCSPFailure(result, 0, false);
+		assertTrue(result.getPrimaryError().getProviderMessage().contains("no nonce"));
+	}
+
+	@Test
+	public void shouldRejectMismatchedResponseNonce() throws Exception
+	{
+		ValidationResult result = validateWithNonce(NonceReply.MISMATCH);
+
+		assertNativeOCSPFailure(result, 0, false);
+		assertTrue(result.getPrimaryError().getProviderMessage().contains(
+				"does not match"));
 	}
 
 	@Test
@@ -324,6 +442,453 @@ public class NativeBCPKIXOCSPTest
 	}
 
 	@Test
+	public void shouldSelectConfiguredAndDiscoveredRespondersInConfiguredOrder()
+			throws Exception
+	{
+		responderServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+		URI firstLocalURI = responderURI("/first-local");
+		URI secondLocalURI = responderURI("/second-local");
+		URI discoveredURI = responderURI("/discovered");
+		X509Certificate aiaTarget = certificate("CN=Ordered OCSP Target",
+				"CN=Native OCSP Root", BigInteger.valueOf(30), keyPair().getPublic(),
+				rootKeyPair.getPrivate(), false, false, discoveredURI);
+		byte[] goodResponse = response(aiaTarget, root, null,
+				rootKeyPair.getPrivate(), rootKeyPair.getPublic(),
+				new Date(System.currentTimeMillis() + 10 * MINUTE));
+		AtomicInteger firstLocalQueries = new AtomicInteger();
+		AtomicInteger secondLocalQueries = new AtomicInteger();
+		AtomicInteger discoveredQueries = new AtomicInteger();
+		addResponse("/first-local", goodResponse, firstLocalQueries);
+		addResponse("/second-local", goodResponse, secondLocalQueries);
+		addResponse("/discovered", goodResponse, discoveredQueries);
+		responderServer.start();
+		OCSPResponder[] localResponders = {
+				new OCSPResponder(firstLocalURI.toURL(), root),
+				new OCSPResponder(secondLocalURI.toURL(), root)};
+
+		ValidationResult localFirst = validator.validateWithOCSP(
+				new X509Certificate[] {aiaTarget, root}, anchors, localResponders,
+				true, 1000, -1, null, false);
+		ValidationResult discoveredFirst = validator.validateWithOCSP(
+				path(aiaTarget, root), anchors, localResponders, false, 1000, -1,
+				null, false);
+
+		assertTrue(localFirst.toString(), localFirst.isValid());
+		assertTrue(discoveredFirst.toString(), discoveredFirst.isValid());
+		assertThat(firstLocalQueries.get(), is(1));
+		assertThat(secondLocalQueries.get(), is(0));
+		assertThat(discoveredQueries.get(), is(1));
+	}
+
+	@Test
+	public void shouldNotSkipNativeFailureForALaterResponder() throws Exception
+	{
+		responderServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+		AtomicInteger firstQueries = new AtomicInteger();
+		AtomicInteger secondQueries = new AtomicInteger();
+		addResponse("/revoked-first", response(new RevokedStatus(
+				new Date(System.currentTimeMillis() - MINUTE), 1),
+				rootKeyPair.getPrivate(),
+				new Date(System.currentTimeMillis() + 10 * MINUTE)), firstQueries);
+		addResponse("/good-second", response(null, rootKeyPair.getPrivate(),
+				new Date(System.currentTimeMillis() + 10 * MINUTE)), secondQueries);
+		responderServer.start();
+		OCSPResponder[] responders = {
+				new OCSPResponder(responderURI("/revoked-first").toURL(), root),
+				new OCSPResponder(responderURI("/good-second").toURL(), root)};
+
+		ValidationResult result = validator.validateWithOCSP(
+				new X509Certificate[] {target, root}, anchors, responders, true,
+				1000, -1, null, false);
+
+		assertNativeOCSPFailure(result);
+		assertThat(firstQueries.get(), is(1));
+		assertThat(secondQueries.get(), is(0));
+	}
+
+	@Test
+	public void shouldFallbackFromUnavailableConfiguredToDiscoveredResponders()
+			throws Exception
+	{
+		responderServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+		URI unavailableURI = responderURI("/unavailable-local");
+		URI secondUnavailableURI = responderURI("/second-unavailable-local");
+		URI discoveredURI = responderURI("/available-discovered");
+		X509Certificate aiaTarget = certificate("CN=Fallback OCSP Target",
+				"CN=Native OCSP Root", BigInteger.valueOf(31), keyPair().getPublic(),
+				rootKeyPair.getPrivate(), false, false, discoveredURI);
+		AtomicInteger unavailableQueries = new AtomicInteger();
+		AtomicInteger secondUnavailableQueries = new AtomicInteger();
+		AtomicInteger discoveredQueries = new AtomicInteger();
+		addUnavailableResponse("/unavailable-local", unavailableQueries);
+		addUnavailableResponse("/second-unavailable-local",
+				secondUnavailableQueries);
+		addResponse("/available-discovered", response(aiaTarget, root, null,
+				rootKeyPair.getPrivate(), rootKeyPair.getPublic(),
+				new Date(System.currentTimeMillis() + 10 * MINUTE)), discoveredQueries);
+		responderServer.start();
+
+		ValidationResult result = validator.validateWithOCSP(
+				new X509Certificate[] {aiaTarget, root}, anchors,
+				new OCSPResponder[] {
+						new OCSPResponder(unavailableURI.toURL(), root),
+						new OCSPResponder(secondUnavailableURI.toURL(), root)},
+				true, 1000, -1, null, false);
+
+		assertTrue(result.toString(), result.isValid());
+		assertThat(unavailableQueries.get(), is(1));
+		assertThat(secondUnavailableQueries.get(), is(1));
+		assertThat(discoveredQueries.get(), is(1));
+	}
+
+	@Test
+	public void shouldReuseTransportFailureWhileFallingBack() throws Exception
+	{
+		responderServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+		AtomicInteger unavailableQueries = new AtomicInteger();
+		AtomicInteger goodQueries = new AtomicInteger();
+		addUnavailableResponse("/cached-unavailable", unavailableQueries);
+		addResponse("/cached-good", response(null, rootKeyPair.getPrivate(),
+				new Date(System.currentTimeMillis() + 10 * MINUTE)), goodQueries);
+		responderServer.start();
+		OCSPResponder[] responders = {
+				new OCSPResponder(responderURI("/cached-unavailable").toURL(), root),
+				new OCSPResponder(responderURI("/cached-good").toURL(), root)};
+
+		ValidationResult first = validator.validateWithOCSP(
+				new X509Certificate[] {target, root}, anchors, responders, true,
+				1000, 60, null, false);
+		ValidationResult second = validator.validateWithOCSP(
+				path(target, root), anchors, responders, true, 1000, 60, null,
+				false);
+
+		assertTrue(first.toString(), first.isValid());
+		assertTrue(second.toString(), second.isValid());
+		assertThat(unavailableQueries.get(), is(1));
+		assertThat(goodQueries.get(), is(1));
+	}
+
+	@Test
+	public void shouldNotCacheRequestSpecificHttpFailure() throws Exception
+	{
+		responderServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+		X509Certificate secondTarget = certificate("CN=Second Native OCSP Target",
+				"CN=Native OCSP Root", BigInteger.valueOf(33), keyPair().getPublic(),
+				rootKeyPair.getPrivate(), false);
+		AtomicInteger queries = new AtomicInteger();
+		byte[] goodResponse = response(secondTarget, root, null,
+				rootKeyPair.getPrivate(), rootKeyPair.getPublic(),
+				new Date(System.currentTimeMillis() + 10 * MINUTE));
+		addRequestSpecificFailureThenResponse("/request-specific", goodResponse,
+				queries);
+		responderServer.start();
+		OCSPResponder responder = new OCSPResponder(
+				responderURI("/request-specific").toURL(), root);
+
+		ValidationResult rejectedRequest = validator.validateWithOCSP(
+				new X509Certificate[] {target, root}, anchors, responder, 1000, 60);
+		ValidationResult independentRequest = validator.validateWithOCSP(
+				new X509Certificate[] {secondTarget, root}, anchors, responder, 1000, 60);
+
+		assertNativeOCSPFailure(rejectedRequest, 0, false);
+		assertTrue(rejectedRequest.getPrimaryError().getCause() instanceof
+				OCSPHTTPException);
+		assertTrue(independentRequest.toString(), independentRequest.isValid());
+		assertThat(queries.get(), is(2));
+	}
+
+	@Test
+	public void shouldNotifyTransportFailureHiddenByFallback() throws Exception
+	{
+		final List<String> locations = new ArrayList<String>();
+		final List<String> types = new ArrayList<String>();
+		final List<Severity> severities = new ArrayList<Severity>();
+		final List<Exception> causes = new ArrayList<Exception>();
+		StoreUpdateListener listener = new StoreUpdateListener()
+		{
+			@Override
+			public void loadingNotification(String location, String type,
+					Severity level, Exception cause)
+			{
+				locations.add(location);
+				types.add(type);
+				severities.add(level);
+				causes.add(cause);
+			}
+		};
+		validator = new NativeBCPKIXValidator(new ObserversHandler(
+				Collections.singleton(listener)));
+		responderServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+		AtomicInteger unavailableQueries = new AtomicInteger();
+		addUnavailableResponse("/notified-unavailable", unavailableQueries);
+		addResponse("/notified-good", response(null, rootKeyPair.getPrivate(),
+				new Date(System.currentTimeMillis() + 10 * MINUTE)),
+				new AtomicInteger());
+		responderServer.start();
+		URI unavailable = responderURI("/notified-unavailable");
+		OCSPResponder[] responders = {
+				new OCSPResponder(unavailable.toURL(), root),
+				new OCSPResponder(responderURI("/notified-good").toURL(), root)};
+
+		ValidationResult result = validator.validateWithOCSP(
+				new X509Certificate[] {target, root}, anchors, responders, true,
+				1000, -1, null, false);
+
+		assertTrue(result.toString(), result.isValid());
+		assertThat(locations, contains(unavailable.toString()));
+		assertThat(types, contains(StoreUpdateListener.OCSP));
+		assertThat(severities, contains(Severity.WARNING));
+		assertThat(causes.size(), is(1));
+		assertTrue(causes.get(0) instanceof IOException);
+	}
+
+	@Test
+	public void shouldNotNotifyDefinitiveNativeStatusFailure() throws Exception
+	{
+		final AtomicInteger notifications = new AtomicInteger();
+		StoreUpdateListener listener = new StoreUpdateListener()
+		{
+			@Override
+			public void loadingNotification(String location, String type,
+					Severity level, Exception cause)
+			{
+				notifications.incrementAndGet();
+			}
+		};
+		validator = new NativeBCPKIXValidator(new ObserversHandler(
+				Collections.singleton(listener)));
+		CertificateStatus revoked = new RevokedStatus(
+				new Date(System.currentTimeMillis() - MINUTE), 1);
+
+		ValidationResult result = validate(response(revoked,
+				rootKeyPair.getPrivate(),
+				new Date(System.currentTimeMillis() + 10 * MINUTE)));
+
+		assertNativeOCSPFailure(result);
+		assertThat(notifications.get(), is(0));
+	}
+
+	@Test
+	public void shouldAcceptMissingResponderWhenOCSPIsIfAvailable()
+			throws Exception
+	{
+		ValidationResult arrayResult = validator.validateWithOCSPIfAvailable(
+				new X509Certificate[] {target, root}, anchors,
+				new OCSPResponder[0], true, 1000, -1, null, false);
+		ValidationResult pathResult = validator.validateWithOCSPIfAvailable(
+				path(target, root), anchors, new OCSPResponder[0], false, 1000,
+				-1, null, false);
+
+		assertTrue(arrayResult.toString(), arrayResult.isValid());
+		assertTrue(pathResult.toString(), pathResult.isValid());
+		assertThat(arrayResult.getValidChain(), contains(target, root));
+		assertThat(pathResult.getValidChain(), contains(target, root));
+	}
+
+	@Test
+	public void shouldValidateGoodResponseWhenOCSPIsIfAvailable()
+			throws Exception
+	{
+		OCSPResponder responder = startResponder(response(null,
+				rootKeyPair.getPrivate(),
+				new Date(System.currentTimeMillis() + 10 * MINUTE)));
+
+		ValidationResult result = validator.validateWithOCSPIfAvailable(
+				new X509Certificate[] {target, root}, anchors,
+				new OCSPResponder[] {responder}, true, 1000, 60, null, false);
+
+		assertTrue(result.toString(), result.isValid());
+		assertThat(result.getValidChain(), contains(target, root));
+	}
+
+	@Test
+	public void shouldAcceptExhaustedTransportFailuresWhenOCSPIsIfAvailable()
+			throws Exception
+	{
+		responderServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+		AtomicInteger firstQueries = new AtomicInteger();
+		AtomicInteger secondQueries = new AtomicInteger();
+		addUnavailableResponse("/optional-unavailable-first", firstQueries);
+		addUnavailableResponse("/optional-unavailable-second", secondQueries);
+		responderServer.start();
+		OCSPResponder[] responders = {
+				new OCSPResponder(responderURI(
+						"/optional-unavailable-first").toURL(), root),
+				new OCSPResponder(responderURI(
+						"/optional-unavailable-second").toURL(), root)};
+
+		ValidationResult result = validator.validateWithOCSPIfAvailable(
+				new X509Certificate[] {target, root}, anchors, responders, true,
+				1000, -1, null, false);
+
+		assertTrue(result.toString(), result.isValid());
+		assertThat(firstQueries.get(), is(1));
+		assertThat(secondQueries.get(), is(1));
+	}
+
+	@Test
+	public void shouldRejectMalformedResponseWhenOCSPIsIfAvailable()
+			throws Exception
+	{
+		responderServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+		AtomicInteger queries = new AtomicInteger();
+		addResponse("/optional-malformed", new byte[] {1, 2, 3, 4}, queries);
+		responderServer.start();
+		OCSPResponder responder = new OCSPResponder(
+				responderURI("/optional-malformed").toURL(), root);
+
+		ValidationResult result = validator.validateWithOCSPIfAvailable(
+				path(target, root), anchors, new OCSPResponder[] {responder}, true,
+				1000, -1, null, false);
+
+		assertNativeOCSPFailure(result, 0, false);
+		assertTrue(result.getPrimaryError().getCause() instanceof
+				OCSPResponseDecodingException);
+		assertThat(queries.get(), is(1));
+	}
+
+	@Test
+	public void shouldRejectUnknownResponseWhenOCSPIsIfAvailable()
+			throws Exception
+	{
+		OCSPResponder responder = startResponder(response(new UnknownStatus(),
+				rootKeyPair.getPrivate(),
+				new Date(System.currentTimeMillis() + 10 * MINUTE)));
+
+		ValidationResult result = validator.validateWithOCSPIfAvailable(
+				new X509Certificate[] {target, root}, anchors,
+				new OCSPResponder[] {responder}, true, 1000, -1, null, false);
+
+		assertNativeOCSPFailure(result);
+	}
+
+	@Test
+	public void shouldRejectRevokedResponseWhenOCSPIsIfAvailable()
+			throws Exception
+	{
+		OCSPResponder responder = startResponder(response(new RevokedStatus(
+				new Date(System.currentTimeMillis() - MINUTE), 1),
+				rootKeyPair.getPrivate(),
+				new Date(System.currentTimeMillis() + 10 * MINUTE)));
+
+		ValidationResult result = validator.validateWithOCSPIfAvailable(
+				path(target, root), anchors, new OCSPResponder[] {responder}, true,
+				1000, -1, null, false);
+
+		assertNativeOCSPFailure(result);
+	}
+
+	@Test
+	public void shouldNotShareTransportFailuresBetweenResponders() throws Exception
+	{
+		responderServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+		AtomicInteger unavailableQueries = new AtomicInteger();
+		AtomicInteger goodQueries = new AtomicInteger();
+		addUnavailableResponse("/issuer-shared-unavailable", unavailableQueries);
+		addResponse("/issuer-shared-good", response(null, rootKeyPair.getPrivate(),
+				new Date(System.currentTimeMillis() + 10 * MINUTE)), goodQueries);
+		responderServer.start();
+		OCSPResponder unavailable = new OCSPResponder(
+				responderURI("/issuer-shared-unavailable").toURL(), root);
+		OCSPResponder good = new OCSPResponder(
+				responderURI("/issuer-shared-good").toURL(), root);
+
+		ValidationResult first = validator.validateWithOCSP(
+				new X509Certificate[] {target, root}, anchors, unavailable, 1000, 60);
+		ValidationResult second = validator.validateWithOCSP(
+				path(target, root), anchors, good, 1000, 60);
+
+		assertNativeOCSPFailure(first, 0, false);
+		assertTrue(second.toString(), second.isValid());
+		assertThat(unavailableQueries.get(), is(1));
+		assertThat(goodQueries.get(), is(1));
+	}
+
+	@Test
+	public void shouldPersistTransportFailureWithoutSerializingException()
+			throws Exception
+	{
+		File diskCache = temporary.newFolder("native-ocsp-failure-cache");
+		responderServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+		AtomicInteger queries = new AtomicInteger();
+		byte[] goodResponse = response(null, rootKeyPair.getPrivate(),
+				new Date(System.currentTimeMillis() + 10 * MINUTE));
+		addRecoveringResponse("/recovering", goodResponse, queries);
+		responderServer.start();
+		OCSPResponder responder = new OCSPResponder(
+				responderURI("/recovering").toURL(), root);
+
+		ValidationResult first = validator.validateWithOCSP(
+				new X509Certificate[] {target, root}, anchors, responder, 1000, 60,
+				diskCache.getAbsolutePath());
+		ValidationResult cached = new NativeBCPKIXValidator().validateWithOCSP(
+				path(target, root), anchors, responder, 1000, 60,
+				diskCache.getAbsolutePath());
+		ValidationResult recovered = new NativeBCPKIXValidator().validateWithOCSP(
+				new X509Certificate[] {target, root}, anchors, responder, 1000, -1,
+				diskCache.getAbsolutePath());
+
+		assertNativeOCSPFailure(first, 0, false);
+		assertNativeOCSPFailure(cached, 0, false);
+		assertTrue(recovered.toString(), recovered.isValid());
+		assertThat(queries.get(), is(2));
+		assertThat(diskCache.listFiles().length, is(0));
+	}
+
+	@Test
+	public void shouldNotFallbackFromMalformedResponseBytes() throws Exception
+	{
+		responderServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+		AtomicInteger malformedQueries = new AtomicInteger();
+		AtomicInteger goodQueries = new AtomicInteger();
+		addResponse("/malformed-first", new byte[] {1, 2, 3, 4}, malformedQueries);
+		addResponse("/good-second", response(null, rootKeyPair.getPrivate(),
+				new Date(System.currentTimeMillis() + 10 * MINUTE)), goodQueries);
+		responderServer.start();
+		OCSPResponder[] responders = {
+				new OCSPResponder(responderURI("/malformed-first").toURL(), root),
+				new OCSPResponder(responderURI("/good-second").toURL(), root)};
+
+		ValidationResult result = validator.validateWithOCSP(
+				new X509Certificate[] {target, root}, anchors, responders, true,
+				1000, -1, null, false);
+
+		assertNativeOCSPFailure(result, 0, false);
+		assertTrue(result.getPrimaryError().getCause() instanceof
+				OCSPResponseDecodingException);
+		assertThat(malformedQueries.get(), is(1));
+		assertThat(goodQueries.get(), is(0));
+	}
+
+	@Test
+	public void shouldFallbackFromUnavailableDiscoveredToConfiguredResponder()
+			throws Exception
+	{
+		responderServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+		URI discoveredURI = responderURI("/unavailable-discovered");
+		URI localURI = responderURI("/available-local");
+		X509Certificate aiaTarget = certificate("CN=Reverse Fallback OCSP Target",
+				"CN=Native OCSP Root", BigInteger.valueOf(32), keyPair().getPublic(),
+				rootKeyPair.getPrivate(), false, false, discoveredURI);
+		AtomicInteger discoveredQueries = new AtomicInteger();
+		AtomicInteger localQueries = new AtomicInteger();
+		addUnavailableResponse("/unavailable-discovered", discoveredQueries);
+		addResponse("/available-local", response(aiaTarget, root, null,
+				rootKeyPair.getPrivate(), rootKeyPair.getPublic(),
+				new Date(System.currentTimeMillis() + 10 * MINUTE)), localQueries);
+		responderServer.start();
+
+		ValidationResult result = validator.validateWithOCSP(
+				path(aiaTarget, root), anchors,
+				new OCSPResponder[] {new OCSPResponder(localURI.toURL(), root)},
+				false, 1000, -1, null, false);
+
+		assertTrue(result.toString(), result.isValid());
+		assertThat(discoveredQueries.get(), is(1));
+		assertThat(localQueries.get(), is(1));
+	}
+
+	@Test
 	public void shouldReportDiscoveredResponderFailureAtOriginalPathPosition()
 			throws Exception
 	{
@@ -426,6 +991,13 @@ public class NativeBCPKIXOCSPTest
 				anchors, startResponder(response));
 	}
 
+	private ValidationResult validateWithNonce(NonceReply reply) throws Exception
+	{
+		return validator.validateWithOCSP(new X509Certificate[] {target, root},
+				anchors, startNonceResponder(reply, new AtomicInteger(),
+						new ArrayList<byte[]>()), 1000, 60, null, true);
+	}
+
 	private void assertNativeOCSPFailure(ValidationResult result)
 	{
 		assertNativeOCSPFailure(result, 0, true);
@@ -461,6 +1033,59 @@ public class NativeBCPKIXOCSPTest
 		return new OCSPResponder(responderURI("/").toURL(), responderCertificate);
 	}
 
+	private OCSPResponder startNonceResponder(final NonceReply reply,
+			final AtomicInteger queries, final List<byte[]> requestedNonces)
+			throws Exception
+	{
+		responderServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+		String path = longResponderPath();
+		responderServer.createContext(path, exchange -> {
+			try
+			{
+				queries.incrementAndGet();
+				ByteArrayOutputStream encodedRequest = new ByteArrayOutputStream();
+				byte[] buffer = new byte[256];
+				int read;
+				while ((read = exchange.getRequestBody().read(buffer)) >= 0)
+					encodedRequest.write(buffer, 0, read);
+				OCSPReq request = new OCSPReq(encodedRequest.toByteArray());
+				Extension nonceExtension = request.getExtension(
+						OCSPObjectIdentifiers.id_pkix_ocsp_nonce);
+				if (nonceExtension == null)
+					throw new IllegalStateException("Request has no nonce");
+				byte[] requestedNonce = nonceExtension.getExtnValue().getOctets();
+				requestedNonces.add(requestedNonce.clone());
+				byte[] responseNonce = reply == NonceReply.OMIT ? null :
+						requestedNonce.clone();
+				if (reply == NonceReply.MISMATCH)
+					responseNonce[0] ^= 1;
+				byte[] encodedResponse = response(null, rootKeyPair.getPrivate(),
+						rootKeyPair.getPublic(),
+						new Date(System.currentTimeMillis() + 10 * MINUTE),
+						responseNonce);
+				exchange.getResponseHeaders().set("Content-Type",
+						"application/ocsp-response");
+				exchange.sendResponseHeaders(200, encodedResponse.length);
+				exchange.getResponseBody().write(encodedResponse);
+			} catch (Exception e)
+			{
+				throw new java.io.IOException(e);
+			} finally
+			{
+				exchange.close();
+			}
+		});
+		responderServer.start();
+		return new OCSPResponder(responderURI(path).toURL(), root);
+	}
+
+	private String longResponderPath()
+	{
+		char[] suffix = new char[200];
+		Arrays.fill(suffix, 'n');
+		return "/" + new String(suffix);
+	}
+
 	private void addResponse(String path, final byte[] response,
 			final AtomicInteger queries)
 	{
@@ -490,6 +1115,78 @@ public class NativeBCPKIXOCSPTest
 		});
 	}
 
+	private void addUnavailableResponse(String path, final AtomicInteger queries)
+	{
+		responderServer.createContext(path, exchange -> {
+			try
+			{
+				queries.incrementAndGet();
+				while (exchange.getRequestBody().read() >= 0)
+				{
+					// Consume the complete OCSP request before responding.
+				}
+				exchange.sendResponseHeaders(503, -1);
+			} finally
+			{
+				exchange.close();
+			}
+		});
+	}
+
+	private void addRequestSpecificFailureThenResponse(String path,
+			final byte[] response, final AtomicInteger queries)
+	{
+		responderServer.createContext(path, exchange -> {
+			try
+			{
+				int query = queries.incrementAndGet();
+				while (exchange.getRequestBody().read() >= 0)
+				{
+					// Consume the complete OCSP request before responding.
+				}
+				if (query == 1)
+				{
+					exchange.sendResponseHeaders(400, -1);
+					return;
+				}
+				exchange.getResponseHeaders().set("Content-Type",
+						"application/ocsp-response");
+				exchange.sendResponseHeaders(200, response.length);
+				exchange.getResponseBody().write(response);
+			} finally
+			{
+				exchange.close();
+			}
+		});
+	}
+
+	private void addRecoveringResponse(String path, final byte[] response,
+			final AtomicInteger queries)
+	{
+		responderServer.createContext(path, exchange -> {
+			try
+			{
+				int query = queries.incrementAndGet();
+				while (exchange.getRequestBody().read() >= 0)
+				{
+					// Consume the complete OCSP request before responding.
+				}
+				if (query == 1)
+				{
+					exchange.sendResponseHeaders(503, -1);
+					return;
+				}
+				exchange.getResponseHeaders().set("Content-Type",
+						"application/ocsp-response");
+				exchange.sendResponseHeaders(200, response.length);
+				exchange.getResponseBody().write(response);
+			} finally
+			{
+				exchange.close();
+			}
+		});
+	}
+
 	private URI responderURI(String path) throws Exception
 	{
 		return new URI("http://127.0.0.1:" +
@@ -506,12 +1203,29 @@ public class NativeBCPKIXOCSPTest
 			PublicKey responderPublicKey, Date nextUpdate) throws Exception
 	{
 		return response(target, root, status, signingKey, responderPublicKey,
-				nextUpdate);
+				nextUpdate, null);
+	}
+
+	private byte[] response(CertificateStatus status, PrivateKey signingKey,
+			PublicKey responderPublicKey, Date nextUpdate, byte[] nonce)
+			throws Exception
+	{
+		return response(target, root, status, signingKey, responderPublicKey,
+				nextUpdate, nonce);
 	}
 
 	private byte[] response(X509Certificate certificate,
 			X509Certificate issuer, CertificateStatus status, PrivateKey signingKey,
 			PublicKey responderPublicKey, Date nextUpdate) throws Exception
+	{
+		return response(certificate, issuer, status, signingKey, responderPublicKey,
+				nextUpdate, null);
+	}
+
+	private byte[] response(X509Certificate certificate,
+			X509Certificate issuer, CertificateStatus status, PrivateKey signingKey,
+			PublicKey responderPublicKey, Date nextUpdate, byte[] nonce)
+			throws Exception
 	{
 		DigestCalculator idDigest = new JcaDigestCalculatorProviderBuilder()
 				.setProvider(BC).build().get(CertificateID.HASH_SHA1);
@@ -524,6 +1238,10 @@ public class NativeBCPKIXOCSPTest
 				responderPublicKey, responderIdDigest);
 		Date thisUpdate = new Date(System.currentTimeMillis() - MINUTE);
 		builder.addResponse(id, status, thisUpdate, nextUpdate);
+		if (nonce != null)
+			builder.setResponseExtensions(new Extensions(new Extension(
+					OCSPObjectIdentifiers.id_pkix_ocsp_nonce, false,
+					new DEROctetString(nonce))));
 		ContentSigner signer = new JcaContentSignerBuilder("SHA256withRSA")
 				.setProvider(BC).build(signingKey);
 		BasicOCSPResp basic = builder.build(signer,
@@ -588,5 +1306,12 @@ public class NativeBCPKIXOCSPTest
 	{
 		return CertificateFactory.getInstance("X.509", BC)
 				.generateCertPath(Arrays.asList(certificates));
+	}
+
+	private enum NonceReply
+	{
+		MATCH,
+		OMIT,
+		MISMATCH
 	}
 }

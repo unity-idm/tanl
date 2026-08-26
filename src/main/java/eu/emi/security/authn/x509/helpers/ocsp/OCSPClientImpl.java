@@ -13,6 +13,7 @@ import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.Charset;
 import java.security.PublicKey;
+import java.security.SecureRandom;
 import java.security.cert.CertificateEncodingException;
 import java.security.cert.CertificateException;
 import java.security.cert.CertificateParsingException;
@@ -20,7 +21,6 @@ import java.security.cert.X509Certificate;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
-import java.util.Random;
 
 import javax.net.ssl.HttpsURLConnection;
 import javax.net.ssl.SSLSocketFactory;
@@ -74,6 +74,48 @@ public class OCSPClientImpl
 {
 	private static final Charset ASCII = Charset.forName("US-ASCII");
 	private static final int MAX_RESPONSE_SIZE = 20480;
+	private static final SecureRandom NONCE_RANDOM = new SecureRandom();
+
+	/**
+	 * Indicates that bytes received from a responder can not be decoded as a
+	 * bounded OCSP response. This is distinct from an HTTP transport failure.
+	 */
+	public static class OCSPResponseDecodingException extends IOException
+	{
+		private static final long serialVersionUID = 1L;
+
+		private OCSPResponseDecodingException(String message)
+		{
+			super(message);
+		}
+
+		private OCSPResponseDecodingException(String message, Throwable cause)
+		{
+			super(message, cause);
+		}
+	}
+
+	/**
+	 * Indicates that the responder returned a non-successful HTTP status. The
+	 * status can be retryable for responder ordering without proving that the
+	 * responder is unavailable for every OCSP request.
+	 */
+	public static class OCSPHTTPException extends IOException
+	{
+		private static final long serialVersionUID = 1L;
+		private final int statusCode;
+
+		private OCSPHTTPException(int statusCode)
+		{
+			super("OCSP responder returned HTTP status " + statusCode);
+			this.statusCode = statusCode;
+		}
+
+		public int getStatusCode()
+		{
+			return statusCode;
+		}
+	}
 	
 	/**
 	 * Returns a verified single response, related to the checked certificate. This is single-shot version, 
@@ -125,8 +167,7 @@ public class OCSPClientImpl
 		if (addNonce)
 		{
 			byte[] nonce = new byte[16];
-			Random rand = new Random();
-			rand.nextBytes(nonce);
+			NONCE_RANDOM.nextBytes(nonce);
 			Extensions extensions = new Extensions(new Extension(OCSPObjectIdentifiers.id_pkix_ocsp_nonce,
 					false, new DEROctetString(nonce)));
 			generator.setRequestExtensions(extensions);
@@ -167,6 +208,12 @@ public class OCSPClientImpl
 				configureHttpConnection(con, timeout);
 			}
 			
+			int statusCode = con.getResponseCode();
+			if (statusCode < 200 || statusCode >= 300)
+			{
+				con.disconnect();
+				throw new OCSPHTTPException(statusCode);
+			}
 			in = con.getInputStream();
 			int contentLength = con.getContentLength();
 			if (contentLength == -1 || contentLength > MAX_RESPONSE_SIZE)
@@ -183,7 +230,8 @@ public class OCSPClientImpl
 				total += count;
 			}
 			if (count >= 0 && in.read() >= 0)
-				throw new IOException("OCSP response size exceeded the upper limit of " + 
+				throw new OCSPResponseDecodingException(
+						"OCSP response size exceeded the upper limit of " +
 						MAX_RESPONSE_SIZE);
 			if (total != contentLength)
 				response = Arrays.copyOf(response, total);
@@ -196,7 +244,15 @@ public class OCSPClientImpl
 				}
 			}
 		}
-		OCSPResp resp = new OCSPResp(response);
+		OCSPResp resp;
+		try
+		{
+			resp = new OCSPResp(response);
+		} catch (IOException e)
+		{
+			throw new OCSPResponseDecodingException(
+					"Can not decode the OCSP response", e);
+		}
 		return new OCSPResponseStructure(resp, maxCache);
 	}
 	
@@ -505,10 +561,6 @@ public class OCSPClientImpl
 		return octs.getOctets();			
 	}
 }
-
-
-
-
 
 
 
