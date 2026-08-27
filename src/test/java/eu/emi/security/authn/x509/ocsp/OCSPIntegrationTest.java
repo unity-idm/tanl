@@ -5,7 +5,7 @@
 package eu.emi.security.authn.x509.ocsp;
 
 import java.io.FileInputStream;
-import java.net.URL;
+import java.net.URI;
 import java.security.cert.X509Certificate;
 
 import org.junit.Ignore;
@@ -48,7 +48,7 @@ public class OCSPIntegrationTest extends NISTValidatorTestBase
 		OCSPParametes ocspParams;
 
 		ocspParams = new OCSPParametes(OCSPCheckingMode.REQUIRE, new OCSPResponder(
-				new URL(responder), responderCert));
+				URI.create(responder).toURL(), responderCert));
 		
 		doPathTest(0, "src/test/resources/ocsp/", new String[] {"SymantecClass3EVSSLCA-G3"}, 
 				".pem", "", new String[] {}, "",
@@ -67,7 +67,7 @@ public class OCSPIntegrationTest extends NISTValidatorTestBase
 		                new String[] { GOOD_CA_CRL, TRUST_ANCHOR_ROOT_CRL }, null, ocspParams);
 
 		ocspParams = new OCSPParametes(OCSPCheckingMode.REQUIRE, new OCSPResponder(
-				new URL(responder), responderCert));
+				URI.create(responder).toURL(), responderCert));
 		nistTest(2, TRUST_ANCHOR_ROOT_CERTIFICATE, 
 		                new String[] { "ValidCertificatePathTest1EE", GOOD_CA_CERT}, 
 		                new String[] { GOOD_CA_CRL, TRUST_ANCHOR_ROOT_CRL }, null, ocspParams);

@@ -17,20 +17,6 @@ import org.bouncycastle.jce.provider.BouncyCastleProvider;
 public class KeyStoreHelper
 {
 	/**
-	 * Creates an instance of KeyStore using our custom logic for choosing a provider:
-	 * BC for PKCS12 and default for others. 
-	 * @param type keystore type, usually PKCS12 or JKS
-	 * @return keystore object instance. It is not loaded/initialized.
-	 * @deprecated use other methods from this class.
-	 * @throws KeyStoreException if there is no provider supporting keystore type
-	 */
-	@Deprecated
-	public static KeyStore getInstance(String type) throws KeyStoreException
-	{
-		return getInstanceForTrust(type);
-	}
-	
-	/**
 	 * Creates an instance of KeyStore which should be used as a truststore, 
 	 * using our custom logic for choosing a provider: BC for PKCS12 and default for others.
 	 * Usage of default provider for PKCS12 makes it not usable as a trust anchor store (bug/'feature' in JDK?).

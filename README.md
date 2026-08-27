@@ -1,4 +1,4 @@
-# canl
+# tanl
 
 Common X.509 Authentication Library for Java. The library provides native
 Bouncy Castle PKIX certificate-path validation, CRL and OCSP revocation
@@ -9,18 +9,18 @@ trust-manager/socket integration.
 
 ```xml
 <dependency>
-    <groupId>eu.eu-emi.security</groupId>
-    <artifactId>canl</artifactId>
-    <version>2.8.4-SNAPSHOT</version>
+    <groupId>io.imunity.tanl</groupId>
+    <artifactId>tanl</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
 </dependency>
 ```
 
-The publication coordinates and Java package names remain unchanged for
-compatibility while new release coordinates are being decided.
+The Java package names remain unchanged; only the Maven publication coordinates
+have moved from `eu.eu-emi.security:canl` to `io.imunity.tanl:tanl`.
 
 ## Build
 
-Java 8 or newer and Maven 3.1.1 or newer are required.
+Java 21 or newer and Maven 3.9.2 or newer are required.
 
 ```sh
 mvn clean test
@@ -28,6 +28,14 @@ mvn clean test
 
 Tests categorized as risky integration tests can be run with
 `mvn -PriskyTests test`.
+
+## Publishing
+
+Releases are signed during `verify` and published through the Sonatype Central
+Portal. Configure a Central user token under the `central` server ID in Maven
+`settings.xml`, make the signing key available to GnuPG, and run
+`mvn clean deploy` from the release version. The Central plugin validates and
+automatically publishes the deployment.
 
 See `src/main/doc/manual.txt` for the user guide,
 `docs/migration-guide.md` for construction and revocation migration examples,
