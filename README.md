@@ -1,6 +1,6 @@
 # tanl
 
-Common X.509 Authentication Library for Java. The library provides native
+TLS X.509 Authentication Library for Java. The library provides native
 Bouncy Castle PKIX certificate-path validation, CRL and OCSP revocation
 checking, Java and OpenSSL-style trust stores, credential loading, and JSSE
 trust-manager/socket integration.
@@ -11,12 +11,18 @@ trust-manager/socket integration.
 <dependency>
     <groupId>io.imunity.tanl</groupId>
     <artifactId>tanl</artifactId>
-    <version>0.0.1-SNAPSHOT</version>
+    <version>...</version>
 </dependency>
 ```
 
-The Java package names remain unchanged; only the Maven publication coordinates
-have moved from `eu.eu-emi.security:canl` to `io.imunity.tanl:tanl`.
+## Relationship to canl-java
+
+This library is a lightweight fork of the original `canl-java` library. It removes
+all grid specific code, including proxy-certificates support. What is important
+X.509 chain validation is based on the native Bouncy Castle library code, unlike canl. 
+
+The Maven publication coordinates have moved from `eu.eu-emi.security:canl` 
+to `io.imunity.tanl:tanl`.
 
 ## Build
 
