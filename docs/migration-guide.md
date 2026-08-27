@@ -59,8 +59,7 @@ CRL modes have the following contracts:
 | `IF_PRESENT` | If an applicable parsed CRL is present, validate it strictly; accept an edge with no applicable CRL. |
 | `REQUIRE` | Require strict native CRL validation for every non-anchor certificate. |
 
-`IF_VALID` is retained only as a deprecated compatibility alias for
-`IF_PRESENT`. New code should use `IF_PRESENT`.
+The deprecated `IF_VALID` compatibility alias was removed. Use `IF_PRESENT`.
 
 OCSP modes have the following contracts:
 
@@ -75,13 +74,13 @@ following example prefers configured responders, then falls back to AIA
 responders after transport failures:
 
 ```java
-import java.net.URL;
+import java.net.URI;
 
 import eu.emi.security.authn.x509.OCSPResponder;
 import eu.emi.security.authn.x509.RevocationParameters.RevocationCheckingOrder;
 
 OCSPResponder[] responders = {
-    new OCSPResponder(new URL("https://ocsp.example.test"),
+    new OCSPResponder(URI.create("https://ocsp.example.test").toURL(),
             responderSigningCertificate)
 };
 OCSPParametes ocsp = new OCSPParametes(
@@ -97,6 +96,22 @@ RevocationParameters revocation = new RevocationParameters(
 The OCSP cache TTL is in seconds. A negative value disables memory and disk
 caching; zero limits cached responses by response metadata. Enabling nonces
 bypasses response caching because responses are request-bound.
+
+## Replacing removed deprecated APIs
+
+TANL drops compatibility APIs that were already deprecated in CANL:
+
+- Replace `SocketFactoryCreator` with `SocketFactoryCreator2` and
+  `HostnameMismatchCallback` with `HostnameMismatchCallback2`.
+- Replace `CrlCheckingMode.IF_VALID` with `IF_PRESENT`.
+- Pass `OCSPParametes` explicitly to `RevocationParameters` and
+  `RevocationParametersExt` instead of using their deprecated convenience
+  constructors.
+- Replace `KeyStoreHelper.getInstance(String)` with `getInstanceForTrust` or
+  `getInstanceForCredential`, according to how the keystore is used.
+
+`AbstractHostnameToCertificateChecker` has no direct replacement; hostname
+verification is integrated into `SocketFactoryCreator2` and its trust manager.
 
 `RevocationCheckingOrder` selects whether combined validation tries OCSP or
 CRL first. With `useAllEnabled == false`, one positively verified mechanism is

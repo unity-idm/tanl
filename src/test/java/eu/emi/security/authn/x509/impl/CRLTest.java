@@ -22,6 +22,8 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Timer;
 
+import javax.security.auth.x500.X500Principal;
+
 import static org.junit.Assert.*;
 
 import org.apache.commons.io.FileUtils;
@@ -344,7 +346,7 @@ public class CRLTest
 	private static void checkCRL(String caDN, CertStoreSpi store, int expected) throws Exception
 	{
 		X509CRLSelector selector = new X509CRLSelector();
-		selector.addIssuerName(caDN);
+		selector.addIssuer(new X500Principal(caDN));
 		Collection<? extends CRL> matched = store.engineGetCRLs(selector);
 		assertEquals(expected, matched.size());
 		if (expected > 0)

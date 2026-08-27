@@ -49,7 +49,8 @@ final class NativeOCSPResponderFailureCache
 		private static final long serialVersionUID = 1L;
 
 		@Override
-		protected boolean removeEldestEntry(Map.Entry<URI, Entry> eldest)
+		protected boolean removeEldestEntry(Map.Entry<URI,
+				NativeOCSPResponderFailureCache.Entry> eldest)
 		{
 			return size() > MAX_ENTRIES;
 		}

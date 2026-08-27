@@ -239,12 +239,9 @@ public abstract class AbstractValidator implements X509CertChainValidatorExt
 				usesOCSPNonce());
 	}
 
-	@SuppressWarnings("deprecation")
 	private boolean usesCRLIfPresent()
 	{
-		CrlCheckingMode mode = revocationMode.getCrlCheckingMode();
-		return mode == CrlCheckingMode.IF_PRESENT ||
-				mode == CrlCheckingMode.IF_VALID;
+		return revocationMode.getCrlCheckingMode() == CrlCheckingMode.IF_PRESENT;
 	}
 
 	private ValidationResult validateNativeCRL(X509Certificate[] certificates,

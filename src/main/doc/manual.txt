@@ -67,7 +67,7 @@ to perform an off-line certificate chain validation or indirectly in SSL sockets
 
 *Creation of SSL sockets*::
 To make creation of SSL sockets easy there is a convenience class 
-+eu.emi.security{zwsp}.authn.x509.impl.SocketFactoryCreator+ which provides methods creating SSL server and
++eu.emi.security{zwsp}.authn.x509.impl.SocketFactoryCreator2+ which provides methods creating SSL server and
 client socket factories. Factory is created from credential and validator instances.
 
 *Utilities*::
@@ -84,8 +84,8 @@ If a project using this library is managed by Maven, it is enough to add this li
 with the following snippet:
 ------------
 	<dependency>
-		<groupId>eu.eu-emi.security</groupId>
-		<artifactId>canl</artifactId>
+		<groupId>io.imunity.tanl</groupId>
+		<artifactId>tanl</artifactId>
 		<version>DESIRED-VERSION-HERE</version>
 	</dependency>
 ------------
@@ -197,7 +197,7 @@ CRLParameters crlParams = new CRLParameters(crlSources, 3600000,
 	15000, "/tmp/crls");
 ValidatorParamsExt commonParams = new ValidatorParamsExt(
 	new RevocationParametersExt(CrlCheckingMode.REQUIRE, 
-		crlParams),
+		crlParams, new OCSPParametes()),
 	Collections.singletonList(listener));
 
 KeystoreCertChainValidator v = new KeystoreCertChainValidator(
@@ -206,7 +206,9 @@ KeystoreCertChainValidator v = new KeystoreCertChainValidator(
 
 X509Credential c = new KeystoreCredential("/my/keystore.jks", 
 	ksPasswd, keyPasswd, serverKeyAlias, "JKS");
-SSLServerSocketFactory sslSsf = SocketFactoryCreator.getServerSocketFactory(c, v);
+SocketFactoryCreator2 socketFactories = new SocketFactoryCreator2(c, v,
+	new DisabledNameMismatchCallback());
+SSLServerSocketFactory sslSsf = socketFactories.getServerSocketFactory();
 		
 ServerSocket sslSS = sslSsf.createServerSocket();
 ------------
@@ -289,7 +291,7 @@ remains as an empty or single-element compatibility view, while
 Building the library
 --------------------
 
-To build the library, Java 8 or newer and Maven 3.1.1 or newer are needed.
+To build the library, Java 21 or newer and Maven 3.9.2 or newer are needed.
 After obtaining the source code it is enough to run:
 
 ---------

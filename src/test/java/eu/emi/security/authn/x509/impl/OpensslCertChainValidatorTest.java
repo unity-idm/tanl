@@ -32,6 +32,7 @@ import java.io.IOException;
 import java.io.StringWriter;
 import java.math.BigInteger;
 import java.net.InetSocketAddress;
+import java.net.URI;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -406,7 +407,7 @@ public class OpensslCertChainValidatorTest
 				.withName("DC=org, DC=example, CN=unsupported OCSP root CA"));
 		given(anOpensslTrustStore().trustingCA(rootCA));
 		OCSPResponder unsupportedResponder = new OCSPResponder(
-				new URL("ftp://127.0.0.1/ocsp"), rootCA.getCertificate());
+				URI.create("ftp://127.0.0.1/ocsp").toURL(), rootCA.getCertificate());
 
 		given(anOpensslCertChainValidator()
 				.with(OCSPCheckingMode.REQUIRE)
@@ -736,7 +737,7 @@ public class OpensslCertChainValidatorTest
 				.withName("DC=org, DC=example, CN=multiple OCSP root CA"));
 		given(anOpensslTrustStore().trustingCA(rootCA));
 		URL firstResponder = startMalformedOCSPServer();
-		URL secondResponder = new URL(firstResponder.toExternalForm() + "?second");
+		URL secondResponder = URI.create(firstResponder.toExternalForm() + "?second").toURL();
 
 		given(anOpensslCertChainValidator()
 				.with(OCSPCheckingMode.REQUIRE)
@@ -778,8 +779,8 @@ public class OpensslCertChainValidatorTest
 			}
 		});
 		ocspServer.start();
-		URL address = new URL("http://127.0.0.1:" +
-				ocspServer.getAddress().getPort() + "/");
+		URL address = URI.create("http://127.0.0.1:" +
+				ocspServer.getAddress().getPort() + "/").toURL();
 		return address;
 	}
 
