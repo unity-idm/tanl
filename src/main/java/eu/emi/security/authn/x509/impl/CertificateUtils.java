@@ -1,12 +1,13 @@
 /*
  * Copyright (c) 2011-2012 ICM Uniwersytet Warszawski All rights reserved.
- * See LICENCE file for licensing information.
+ * See LICENSE.txt for licensing information.
  * 
  * Parts of this class are derived from the glite.security.util-java module, 
  * copyrighted as follows:
  *
  * Copyright (c) Members of the EGEE Collaboration. 2004. See
  * http://www.eu-egee.org/partners/ for details on the copyright holders.
+ * Those parts are licensed under the Apache License, Version 2.0.
  */
 package eu.emi.security.authn.x509.impl;
 

@@ -1,6 +1,6 @@
 /*
- * Copyright (c) 2026 ICM Uniwersytet Warszawski All rights reserved.
- * See LICENCE.txt file for licensing information.
+ * Copyright (c) 2026 Bixbit - Krzysztof Benedyczak. All rights reserved.
+ * See LICENSE.txt for licensing information.
  */
 package eu.emi.security.authn.x509.helpers.pkipath;
 

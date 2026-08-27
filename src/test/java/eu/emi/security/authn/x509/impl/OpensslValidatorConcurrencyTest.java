@@ -1,6 +1,9 @@
 /*
+ * Copyright (c) 2026 Bixbit - Krzysztof Benedyczak. All rights reserved.
+ * See LICENSE.txt for licensing information.
+ *
+ * Parts of this file are based on code copyrighted as follows:
  * Copyright (c) 2011-2012 ICM Uniwersytet Warszawski All rights reserved.
- * See LICENCE.txt file for licensing information.
  */
 package eu.emi.security.authn.x509.impl;
 
