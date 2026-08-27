@@ -5,6 +5,7 @@
 package eu.emi.security.authn.x509.impl;
 
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.security.KeyStore;
@@ -13,6 +14,11 @@ import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Predicate;
 
 import static org.junit.Assert.*;
 
@@ -24,6 +30,7 @@ import eu.emi.security.authn.x509.OCSPCheckingMode;
 import eu.emi.security.authn.x509.OCSPParametes;
 import eu.emi.security.authn.x509.ValidationError;
 import eu.emi.security.authn.x509.StoreUpdateListener;
+import eu.emi.security.authn.x509.StoreUpdateListener.Severity;
 import eu.emi.security.authn.x509.ValidationErrorListener;
 import eu.emi.security.authn.x509.ValidationResult;
 import eu.emi.security.authn.x509.impl.CertificateUtils.Encoding;
@@ -37,9 +44,6 @@ import eu.emi.security.authn.x509.impl.CertificateUtils.Encoding;
  */
 public class TestKSValidators
 {
-	private boolean gotError;
-	private int vError;
-	
 	public static File initDir() throws IOException
 	{
 		File dir = new File("target/test-tmp/truststores");
@@ -116,6 +120,7 @@ public class TestKSValidators
 	@Test
 	public void testValidationListener() throws Exception
 	{
+		AtomicInteger validationErrors = new AtomicInteger();
 		KeyStore emptyKs = KeyStore.getInstance("JKS");
 		emptyKs.load(null);
 		InMemoryKeystoreCertChainValidator validator1 = new InMemoryKeystoreCertChainValidator(
@@ -129,7 +134,7 @@ public class TestKSValidators
 		{
 			public void onValidationError(ValidationError error)
 			{
-				vError++;
+				validationErrors.incrementAndGet();
 				System.out.println("L1: " + error);
 			}
 		};
@@ -137,28 +142,28 @@ public class TestKSValidators
 		{
 			public void onValidationError(ValidationError error)
 			{
-				vError++;
+				validationErrors.incrementAndGet();
 				System.out.println("L2: " + error);
 			}
 		};
 		validator1.addValidationListener(l1);
 		
-		vError = 0;
+		validationErrors.set(0);
 		ValidationResult res = validator1.validate(toValidate);
 		assertFalse(res.isValid());
-		assertEquals(1, vError);
+		assertEquals(1, validationErrors.get());
 		
 		validator1.addValidationListener(l2);
-		vError = 0;
+		validationErrors.set(0);
 		ValidationResult res1 = validator1.validate(toValidate);
 		assertFalse(res1.getErrors().toString(), res1.isValid());
-		assertEquals(2, vError);
+		assertEquals(2, validationErrors.get());
 		
 		validator1.removeValidationListener(l1);
-		vError = 0;
+		validationErrors.set(0);
 		ValidationResult res2 = validator1.validate(toValidate);
 		assertFalse(res2.isValid());
-		assertEquals(1, vError);
+		assertEquals(1, validationErrors.get());
 		
 		validator1.dispose();
 	}
@@ -180,34 +185,36 @@ public class TestKSValidators
 		X509Certificate[] toValidate = CertificateUtils.loadCertificateChain(
 				new FileInputStream("src/test/resources/validator-certs/trusted_client.cert"), 
 				Encoding.PEM);
-		gotError = false;
-		validator1.addUpdateListener(new StoreUpdateListener()
+		BlockingQueue<StoreNotification> notifications = new LinkedBlockingQueue<>();
+		validator1.addUpdateListener(recordingListener(notifications));
+		
+		try
 		{
-			@Override
-			public void loadingNotification(String location, String type,
-					Severity level, Exception cause)
-			{
-				assertEquals(type, StoreUpdateListener.CA_CERT);
-				System.out.println(location + " " + cause);
-				gotError = true;
-			}
-		});
-		
-		ValidationResult res = validator1.validate(toValidate);
-		assertFalse(res.isValid());
-		
-		validator1.setTruststoreUpdateInterval(200);
-		FileUtils.copyFile(new File("src/test/resources/truststores/truststore1.jks"), ks);
-		Thread.sleep(500);
-		
-		ValidationResult res2 = validator1.validate(toValidate);
-		assertTrue(res2.isValid());
+			ValidationResult res = validator1.validate(toValidate);
+			assertFalse(res.isValid());
 
-		ks.delete();
-		Thread.sleep(500);
-		assertTrue(gotError);
-		
-		validator1.dispose();
+			validator1.setTruststoreUpdateInterval(25);
+			FileUtils.copyFile(new File("src/test/resources/truststores/truststore1.jks"), ks);
+			StoreNotification loaded = takeNotification(notifications,
+					notification -> notification.level == Severity.NOTIFICATION, 2000);
+			assertEquals(StoreUpdateListener.CA_CERT, loaded.type);
+			assertEquals(ks.getPath(), loaded.location);
+			assertNull(loaded.cause);
+
+			ValidationResult res2 = validator1.validate(toValidate);
+			assertTrue(res2.isValid());
+
+			notifications.clear();
+			assertTrue(ks.delete());
+			StoreNotification failure = takeNotification(notifications,
+					notification -> notification.level == Severity.ERROR, 2000);
+			assertEquals(StoreUpdateListener.CA_CERT, failure.type);
+			assertEquals(ks.getPath(), failure.location);
+			assertTrue(failure.cause instanceof FileNotFoundException);
+		} finally
+		{
+			validator1.dispose();
+		}
 	}
 	
 	/**
@@ -236,15 +243,20 @@ public class TestKSValidators
 		
 		File dir = initDir();
 		validator1.setCrls(Collections.singletonList(dir.getPath() + "/*.crl"));
+		BlockingQueue<StoreNotification> notifications = new LinkedBlockingQueue<>();
+		validator1.addUpdateListener(recordingListener(notifications));
 		
 		res = validator1.validate(toValidate1);
 		assertFalse(res.isValid());
 		res2 = validator1.validate(toValidate2);
 		assertFalse(res2.isValid());
 		
-		validator1.setCRLUpdateInterval(200);
+		validator1.setCRLUpdateInterval(25);
 		FileUtils.copyFile(new File("src/test/resources/truststores/maincacrl.pem"), new File(dir, "crl1.crl"));
-		Thread.sleep(500);
+		StoreNotification loaded = takeNotification(notifications,
+				notification -> notification.level == Severity.NOTIFICATION, 2000);
+		assertEquals(StoreUpdateListener.CRL, loaded.type);
+		assertNull(loaded.cause);
 		
 		res = validator1.validate(toValidate1);
 		assertTrue(res.isValid());
@@ -316,4 +328,44 @@ public class TestKSValidators
 			"the!njs".toCharArray(), "PKCS12", -1);
 		assertEquals(1, validator1.getTrustedIssuers().length);
 	}	
+
+	private static StoreUpdateListener recordingListener(
+			BlockingQueue<StoreNotification> notifications)
+	{
+		return (location, type, level, cause) ->
+				notifications.add(new StoreNotification(location, type, level, cause));
+	}
+
+	private static StoreNotification takeNotification(
+			BlockingQueue<StoreNotification> notifications,
+			Predicate<StoreNotification> predicate, long timeoutMillis)
+			throws InterruptedException
+	{
+		long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis);
+		while (true)
+		{
+			long remaining = deadline - System.nanoTime();
+			StoreNotification notification = remaining <= 0 ? null :
+					notifications.poll(remaining, TimeUnit.NANOSECONDS);
+			assertNotNull("Timed out waiting for a matching store notification", notification);
+			if (predicate.test(notification))
+				return notification;
+		}
+	}
+
+	private static class StoreNotification
+	{
+		private final String location;
+		private final String type;
+		private final Severity level;
+		private final Exception cause;
+
+		private StoreNotification(String location, String type, Severity level, Exception cause)
+		{
+			this.location = location;
+			this.type = type;
+			this.level = level;
+			this.cause = cause;
+		}
+	}
 }

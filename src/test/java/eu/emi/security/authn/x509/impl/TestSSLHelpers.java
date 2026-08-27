@@ -7,11 +7,21 @@ package eu.emi.security.authn.x509.impl;
 import java.io.FileReader;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketAddress;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import javax.net.ssl.SSLHandshakeException;
+import javax.net.ssl.SSLSocket;
 
 import org.junit.Assert;
 
@@ -25,11 +35,6 @@ import eu.emi.security.authn.x509.helpers.ssl.EnforcingNameMismatchCallback;
 
 public class TestSSLHelpers
 {
-	private volatile Exception exc;
-	private volatile int val;
-	
-	
-	
 	@Test
 	public void shouldFailOnHostnameMismatch() throws Exception
 	{
@@ -54,26 +59,6 @@ public class TestSSLHelpers
 		testCreation(false);
 	}
 
-	private synchronized void setException(Exception e)
-	{
-		this.exc = e;
-	}
-
-	private synchronized void setVal(int val)
-	{
-		this.val = val;
-	}
-	
-	private synchronized Exception getException()
-	{
-		return exc;
-	}
-
-	private synchronized int getVal()
-	{
-		return val;
-	}
-
 	private void testCreation(boolean mode) throws Exception
 	{
 		X509Credential c = new PEMCredential(new FileReader(CertificateUtilsTest.PFX + "pk-1.pem"), 
@@ -88,67 +73,64 @@ public class TestSSLHelpers
 			HostnameMismatchCallback2 hostnameMismatchCallback) throws Exception
 	{
 		SocketFactoryCreator2 socketFactoryCreator = new SocketFactoryCreator2(c, v, hostnameMismatchCallback);
-		final ServerSocket ss = socketFactoryCreator.getServerSocketFactory().createServerSocket();
-		ss.bind(null);
-		
-		Socket s = socketFactoryCreator.getSocketFactory().createSocket();
-		exc = null;
-		val = -1;
-		Runnable r1 = new Runnable()
+		ExecutorService serverExecutor = Executors.newSingleThreadExecutor();
+		try (ServerSocket ss = socketFactoryCreator.getServerSocketFactory().createServerSocket())
 		{
-			@Override
-			public void run()
+			ss.bind(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0));
+			ss.setSoTimeout(1000);
+			CountDownLatch serverAccepted = new CountDownLatch(1);
+			AtomicReference<Socket> acceptedSocket = new AtomicReference<>();
+			Future<Integer> received = serverExecutor.submit(() ->
 			{
-				try
+				try (Socket accepted = ss.accept())
 				{
-					Socket s = ss.accept();
-					setVal(s.getInputStream().read());
-					synchronized(this)
-					{
-						notifyAll();
-					}
-					ss.close();
-				} catch (IOException e)
+					acceptedSocket.set(accepted);
+					serverAccepted.countDown();
+					accepted.setSoTimeout(500);
+					return accepted.getInputStream().read();
+				}
+			});
+
+			try (Socket client = socketFactoryCreator.getSocketFactory().createSocket())
+			{
+				SocketAddress socketAddr = ss.getLocalSocketAddress();
+				client.connect(socketAddr, 1000);
+				Assert.assertTrue("SSL server did not accept the connection",
+						serverAccepted.await(1, TimeUnit.SECONDS));
+				client.setSoTimeout(1000);
+				if (shouldSucceed)
 				{
-					setException(e);
-					synchronized(this)
+					((SSLSocket) client).startHandshake();
+					OutputStream os = client.getOutputStream();
+					byte value = 12;
+					os.write(value);
+					os.flush();
+					Assert.assertEquals(value,
+							received.get(3, TimeUnit.SECONDS).intValue());
+				} else
+				{
+					Assert.assertThrows(SSLHandshakeException.class,
+							() -> ((SSLSocket) client).startHandshake());
+					client.close();
+					acceptedSocket.get().close();
+					try
 					{
-						notifyAll();
+						received.get(3, TimeUnit.SECONDS);
+						Assert.fail("Server accepted an invalid SSL channel");
+					} catch (ExecutionException expected)
+					{
+						Assert.assertTrue(expected.getCause() instanceof IOException);
 					}
 				}
+			} finally
+			{
+				received.cancel(true);
 			}
-		};
-		Thread t1 = new Thread(r1);
-		t1.start();
-		if (shouldSucceed)
+		} finally
 		{
-			SocketAddress socketAddr = ss.getLocalSocketAddress();
-			System.out.println(socketAddr);
-			s.connect(socketAddr);
-			OutputStream os = s.getOutputStream();
-			byte value = 12;
-			synchronized(r1)
-			{
-				os.write(value);
-				os.flush();
-				r1.wait();
-			}
-			s.close();
-			Assert.assertTrue(getException() == null);
-			Assert.assertEquals(value, getVal());
-		} else
-		{
-			s.connect(ss.getLocalSocketAddress());
-			OutputStream os = s.getOutputStream();
-			byte value = 12;
-			try
-			{
-				os.write(value);
-				Assert.fail("Was able to send message on invalid SSL channel");
-			} catch (SSLHandshakeException e)
-			{
-				//OK
-			}
+			serverExecutor.shutdownNow();
+			Assert.assertTrue("SSL server thread did not stop",
+					serverExecutor.awaitTermination(3, TimeUnit.SECONDS));
 		}
 	}
 }

@@ -78,6 +78,7 @@ import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
 import org.bouncycastle.operator.jcajce.JcaDigestCalculatorProviderBuilder;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.BeforeClass;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
@@ -105,20 +106,19 @@ public class NativeBCPKIXOCSPTest
 	private static final long MINUTE = 60L * 1000L;
 
 	private NativeBCPKIXValidator validator;
-	private KeyPair rootKeyPair;
-	private X509Certificate root;
-	private X509Certificate target;
-	private Set<TrustAnchor> anchors;
+	private static KeyPair rootKeyPair;
+	private static X509Certificate root;
+	private static X509Certificate target;
+	private static Set<TrustAnchor> anchors;
 	private HttpServer responderServer;
 
 	@Rule
 	public TemporaryFolder temporary = new TemporaryFolder();
 
-	@Before
-	public void setUp() throws Exception
+	@BeforeClass
+	public static void createSharedCertificateMaterial() throws Exception
 	{
 		CertificateUtils.configureSecProvider();
-		validator = new NativeBCPKIXValidator();
 		rootKeyPair = keyPair();
 		root = certificate("CN=Native OCSP Root", "CN=Native OCSP Root",
 				BigInteger.ONE, rootKeyPair.getPublic(), rootKeyPair.getPrivate(), true);
@@ -127,6 +127,12 @@ public class NativeBCPKIXOCSPTest
 				BigInteger.valueOf(2), targetKeyPair.getPublic(),
 				rootKeyPair.getPrivate(), false);
 		anchors = Collections.singleton(new TrustAnchor(root, null));
+	}
+
+	@Before
+	public void setUp()
+	{
+		validator = new NativeBCPKIXValidator();
 	}
 
 	@After
@@ -1526,7 +1532,7 @@ public class NativeBCPKIXOCSPTest
 		return response.getEncoded();
 	}
 
-	private X509Certificate certificate(String subject, String issuer,
+	private static X509Certificate certificate(String subject, String issuer,
 			BigInteger serial, PublicKey publicKey,
 			PrivateKey signingKey, boolean ca) throws Exception
 	{
@@ -1534,7 +1540,7 @@ public class NativeBCPKIXOCSPTest
 				false, null);
 	}
 
-	private X509Certificate certificate(String subject, String issuer,
+	private static X509Certificate certificate(String subject, String issuer,
 			BigInteger serial, PublicKey publicKey,
 			PrivateKey signingKey, boolean ca, boolean ocspSigning) throws Exception
 	{
@@ -1542,7 +1548,7 @@ public class NativeBCPKIXOCSPTest
 				ocspSigning, null);
 	}
 
-	private X509Certificate certificate(String subject, String issuer,
+	private static X509Certificate certificate(String subject, String issuer,
 			BigInteger serial, PublicKey publicKey, PrivateKey signingKey,
 			boolean ca, boolean ocspSigning, URI ocspResponder) throws Exception
 	{
@@ -1571,7 +1577,7 @@ public class NativeBCPKIXOCSPTest
 				.getCertificate(builder.build(signer));
 	}
 
-	private KeyPair keyPair() throws Exception
+	private static KeyPair keyPair() throws Exception
 	{
 		KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA", BC);
 		generator.initialize(2048);

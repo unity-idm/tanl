@@ -242,9 +242,8 @@ public class OpensslCertChainValidatorTest
 
 		assertThat(whenValidating(serviceCertificate).isValid(), is(false));
 		given(anOpensslTrustStore().trustingCA(rootCA));
-		Thread.sleep(75);
 
-		ValidationResult result = whenValidating(serviceCertificate);
+		ValidationResult result = waitForValid(serviceCertificate, Duration.ofSeconds(2));
 		assertThat(result.toString(), result.isValid(), is(true));
 	}
 
@@ -797,7 +796,7 @@ public class OpensslCertChainValidatorTest
 			if (result.isValid()) {
 				return result;
 			}
-			Thread.sleep(25);
+			Thread.sleep(10);
 		} while (System.currentTimeMillis() < deadline);
 		return result;
 	}
