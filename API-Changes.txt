@@ -29,7 +29,7 @@ The published Maven coordinates changed from eu.eu-emi.security:canl to
 io.imunity.tanl:tanl. Java package names remain under eu.emi.security; this is
 an artifact-coordinate change, not a package relocation.
 
-The library now targets Java 21. Building it requires JDK 21 or newer and
+The library now targets Java 17. Building it requires JDK 17 or newer and
 Maven 3.9.2 or newer.
 
 The initial TANL development version is 0.0.1-SNAPSHOT.

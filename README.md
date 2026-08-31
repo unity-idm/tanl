@@ -26,7 +26,7 @@ to `io.imunity.tanl:tanl`.
 
 ## Build
 
-Java 21 or newer and Maven 3.9.2 or newer are required.
+Java 17 or newer and Maven 3.9.2 or newer are required.
 
 ```sh
 mvn clean test

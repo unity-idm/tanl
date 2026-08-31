@@ -6,7 +6,7 @@ moving to the new artifact.
 
 Development starts at version `0.0.1-SNAPSHOT` under the new coordinates.
 
-The build targets Java 21 with `--release 21` and requires Maven 3.9.2 or newer.
+The build targets Java 17 with `--release 17` and requires Maven 3.9.2 or newer.
 All declared lifecycle, packaging, release, signing, site, and reporting plugins
 use current stable Maven 3 releases.
 

@@ -291,7 +291,7 @@ remains as an empty or single-element compatibility view, while
 Building the library
 --------------------
 
-To build the library, Java 21 or newer and Maven 3.9.2 or newer are needed.
+To build the library, Java 17 or newer and Maven 3.9.2 or newer are needed.
 After obtaining the source code it is enough to run:
 
 ---------
