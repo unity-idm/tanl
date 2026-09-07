@@ -4,7 +4,6 @@
  */
 package eu.emi.security.authn.x509.impl;
 
-import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
@@ -29,22 +28,20 @@ public class X500NameUtilsTest
 	public void shouldParseDNWithGN() throws IOException
 	{
 		X500Principal x500Principal = X500NameUtils.getX500Principal("GN=test,DC=root");
-		
-		assertThat(x500Principal.getName()).isEqualTo("2.5.4.42=#0c0474657374,DC=root");
+		assertEquals("2.5.4.42=#0c0474657374,DC=root", x500Principal.getName());
 	}
 	
 	@Test
 	public void shouldPrettyPrintDNWithGN() throws IOException
 	{
-		assertThat(X500NameUtils.getReadableForm("GN=test,DC=root")).isEqualTo("GIVENNAME=test,DC=root");
+		assertEquals("GIVENNAME=test,DC=root", X500NameUtils.getReadableForm("GN=test,DC=root"));
 	}
 
 	@Test
 	public void shouldAcceptLegacyNonStandardCountryValues() throws IOException
 	{
 		X500Principal principal = X500NameUtils.getX500Principal("CN=test,C=Country");
-
-		assertThat(principal.getName()).isEqualTo("CN=test,C=Country");
+		assertEquals("CN=test,C=Country", principal.getName());
 	}
 
 	@Test
@@ -52,8 +49,7 @@ public class X500NameUtilsTest
 	{
 		String longCommonName = new String(new char[65]).replace('\0', 'a');
 		X500Principal principal = X500NameUtils.getX500Principal("CN=" + longCommonName + ",C=PL");
-
-		assertThat(principal.getName()).isEqualTo("CN=" + longCommonName + ",C=PL");
+		assertEquals("CN=" + longCommonName + ",C=PL", principal.getName());
 	}
 	
 	@Test

@@ -4,9 +4,9 @@
  */
 package eu.emi.security.authn.x509.impl;
 
-import javax.security.auth.x500.X500Principal;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
-import static org.junit.jupiter.api.Assertions.*;
+import javax.security.auth.x500.X500Principal;
 
 import org.bouncycastle.asn1.x500.RDN;
 import org.bouncycastle.asn1.x500.X500Name;

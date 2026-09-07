@@ -1,3 +1,5 @@
+import java.security.cert.X509Certificate;
+
 import eu.emi.security.authn.x509.CrlCheckingMode;
 import eu.emi.security.authn.x509.OCSPCheckingMode;
 import eu.emi.security.authn.x509.OCSPParametes;
@@ -8,8 +10,6 @@ import eu.emi.security.authn.x509.X509CertChainValidator;
 import eu.emi.security.authn.x509.impl.OpensslCertChainValidator;
 import eu.emi.security.authn.x509.impl.PEMCredential;
 import eu.emi.security.authn.x509.impl.ValidatorParams;
-
-import java.security.cert.X509Certificate;
 
 /**
  * Validates that a server private key and certificate are:
