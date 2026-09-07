@@ -7,18 +7,18 @@ package eu.emi.security.authn.x509.helpers.pkipath;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.is;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertSame;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.math.BigInteger;
 import java.net.InetSocketAddress;
-import java.net.URI;
 import java.net.SocketTimeoutException;
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.StandardOpenOption;
 import java.security.KeyPair;
@@ -76,12 +76,11 @@ import org.bouncycastle.operator.ContentSigner;
 import org.bouncycastle.operator.DigestCalculator;
 import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
 import org.bouncycastle.operator.jcajce.JcaDigestCalculatorProviderBuilder;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.BeforeClass;
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.rules.TemporaryFolder;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import com.sun.net.httpserver.HttpServer;
 
@@ -112,10 +111,10 @@ public class NativeBCPKIXOCSPTest
 	private static Set<TrustAnchor> anchors;
 	private HttpServer responderServer;
 
-	@Rule
-	public TemporaryFolder temporary = new TemporaryFolder();
+	@TempDir
+	public File temporary;
 
-	@BeforeClass
+	@BeforeAll
 	public static void createSharedCertificateMaterial() throws Exception
 	{
 		CertificateUtils.configureSecProvider();
@@ -129,13 +128,13 @@ public class NativeBCPKIXOCSPTest
 		anchors = Collections.singleton(new TrustAnchor(root, null));
 	}
 
-	@Before
+	@BeforeEach
 	public void setUp()
 	{
 		validator = new NativeBCPKIXValidator();
 	}
 
-	@After
+	@AfterEach
 	public void tearDown()
 	{
 		if (responderServer != null)
@@ -153,8 +152,8 @@ public class NativeBCPKIXOCSPTest
 		ValidationResult pathResult = validator.validateWithOCSP(
 				path(target, root), anchors, responder);
 
-		assertTrue(arrayResult.toString(), arrayResult.isValid());
-		assertTrue(pathResult.toString(), pathResult.isValid());
+		assertTrue(arrayResult.isValid());
+		assertTrue(pathResult.isValid());
 		assertThat(arrayResult.getValidChain(), contains(target, root));
 		assertThat(pathResult.getValidChain(), contains(target, root));
 	}
@@ -170,8 +169,8 @@ public class NativeBCPKIXOCSPTest
 		ValidationResult pathResult = validator.validateWithOCSP(
 				path(target, root), anchors, responder, 1000);
 
-		assertTrue(arrayResult.toString(), arrayResult.isValid());
-		assertTrue(pathResult.toString(), pathResult.isValid());
+		assertTrue(arrayResult.isValid());
+		assertTrue(pathResult.isValid());
 		assertThat(arrayResult.getValidChain(), contains(target, root));
 		assertThat(pathResult.getValidChain(), contains(target, root));
 	}
@@ -191,8 +190,8 @@ public class NativeBCPKIXOCSPTest
 		ValidationResult pathResult = validator.validateWithOCSP(
 				path(target, root), anchors, responder, 1000, 60);
 
-		assertTrue(arrayResult.toString(), arrayResult.isValid());
-		assertTrue(pathResult.toString(), pathResult.isValid());
+		assertTrue(arrayResult.isValid());
+		assertTrue(pathResult.isValid());
 		assertThat(queries.get(), is(1));
 	}
 
@@ -232,15 +231,15 @@ public class NativeBCPKIXOCSPTest
 		ValidationResult second = validator.validateWithOCSP(
 				new X509Certificate[] {target, root}, anchors, responder, 1000, 60);
 
-		assertTrue(first.toString(), first.isValid());
-		assertTrue(second.toString(), second.isValid());
+		assertTrue(first.isValid());
+		assertTrue(second.isValid());
 		assertThat(queries.get(), is(2));
 	}
 
 	@Test
 	public void shouldLoadPersistentResponseInANewValidator() throws Exception
 	{
-		File diskCache = temporary.newFolder("native-ocsp-cache");
+		File diskCache = temporary;
 		responderServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
 		AtomicInteger queries = new AtomicInteger();
 		addResponse("/", response(null, rootKeyPair.getPrivate(),
@@ -257,8 +256,8 @@ public class NativeBCPKIXOCSPTest
 				path(target, root), anchors, responder, 1000, 60,
 				diskCache.getAbsolutePath());
 
-		assertTrue(first.toString(), first.isValid());
-		assertTrue(reloaded.toString(), reloaded.isValid());
+		assertTrue(first.isValid());
+		assertTrue(reloaded.isValid());
 		assertThat(queries.get(), is(1));
 		assertThat(diskCache.listFiles().length, is(1));
 	}
@@ -266,7 +265,7 @@ public class NativeBCPKIXOCSPTest
 	@Test
 	public void shouldRecoverFromCorruptPersistentResponse() throws Exception
 	{
-		File diskCache = temporary.newFolder("corrupt-native-ocsp-cache");
+		File diskCache = temporary;
 		responderServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
 		AtomicInteger queries = new AtomicInteger();
 		addResponse("/", response(null, rootKeyPair.getPrivate(),
@@ -283,8 +282,8 @@ public class NativeBCPKIXOCSPTest
 				new X509Certificate[] {target, root}, anchors, responder, 1000, 60,
 				diskCache.getAbsolutePath());
 
-		assertTrue(first.toString(), first.isValid());
-		assertTrue(recovered.toString(), recovered.isValid());
+		assertTrue(first.isValid());
+		assertTrue(recovered.isValid());
 		assertThat(queries.get(), is(2));
 		assertThat(diskCache.listFiles().length, is(1));
 	}
@@ -292,7 +291,7 @@ public class NativeBCPKIXOCSPTest
 	@Test
 	public void shouldRequireAndAcceptExactFreshNonce() throws Exception
 	{
-		File diskCache = temporary.newFolder("nonce-cache");
+		File diskCache = temporary;
 		AtomicInteger queries = new AtomicInteger();
 		List<byte[]> requestedNonces = new ArrayList<byte[]>();
 		OCSPResponder responder = startNonceResponder(NonceReply.MATCH, queries,
@@ -305,8 +304,8 @@ public class NativeBCPKIXOCSPTest
 				path(target, root), anchors, responder, 1000, 60,
 				diskCache.getAbsolutePath(), true);
 
-		assertTrue(arrayResult.toString(), arrayResult.isValid());
-		assertTrue(pathResult.toString(), pathResult.isValid());
+		assertTrue(arrayResult.isValid());
+		assertTrue(pathResult.isValid());
 		assertThat(queries.get(), is(2));
 		assertThat(requestedNonces.size(), is(2));
 		assertThat(requestedNonces.get(0).length, is(16));
@@ -370,9 +369,8 @@ public class NativeBCPKIXOCSPTest
 			releaseResponse.countDown();
 		}
 
-		assertTrue("The responder did not receive the request",
-				requestReceived.await(1, TimeUnit.SECONDS));
-		assertFalse(result.toString(), result.isValid());
+		assertTrue(requestReceived.await(1, TimeUnit.SECONDS));
+		assertFalse(result.isValid());
 		ValidationError error = result.getPrimaryError();
 		assertThat(error.getErrorCode(), is(ValidationErrorCode.PKIX_FAILURE));
 		assertThat(error.getStage(), is(ValidationStage.REVOCATION));
@@ -401,8 +399,8 @@ public class NativeBCPKIXOCSPTest
 				new OCSPResponder(responderURI("/").toURL(), responderCertificate),
 				1000);
 
-		assertTrue(result.toString(), result.isValid());
-		assertTrue(prefetchedResult.toString(), prefetchedResult.isValid());
+		assertTrue(result.isValid());
+		assertTrue(prefetchedResult.isValid());
 		assertThat(result.getValidChain(), contains(target, root));
 		assertThat(prefetchedResult.getValidChain(), contains(target, root));
 	}
@@ -442,10 +440,10 @@ public class NativeBCPKIXOCSPTest
 		ValidationResult prefetchedPathResult = validator.validateWithOCSPFromAIA(
 				path(aiaTarget, intermediate, root), anchors, 1000);
 
-		assertTrue(arrayResult.toString(), arrayResult.isValid());
-		assertTrue(pathResult.toString(), pathResult.isValid());
-		assertTrue(prefetchedArrayResult.toString(), prefetchedArrayResult.isValid());
-		assertTrue(prefetchedPathResult.toString(), prefetchedPathResult.isValid());
+		assertTrue(arrayResult.isValid());
+		assertTrue(pathResult.isValid());
+		assertTrue(prefetchedArrayResult.isValid());
+		assertTrue(prefetchedPathResult.isValid());
 		assertThat(arrayResult.getValidChain(), contains(aiaTarget, intermediate, root));
 		assertThat(pathResult.getValidChain(), contains(aiaTarget, intermediate, root));
 		assertThat(prefetchedArrayResult.getValidChain(),
@@ -488,8 +486,8 @@ public class NativeBCPKIXOCSPTest
 				path(aiaTarget, root), anchors, localResponders, false, 1000, -1,
 				null, false);
 
-		assertTrue(localFirst.toString(), localFirst.isValid());
-		assertTrue(discoveredFirst.toString(), discoveredFirst.isValid());
+		assertTrue(localFirst.isValid());
+		assertTrue(discoveredFirst.isValid());
 		assertThat(firstLocalQueries.get(), is(1));
 		assertThat(secondLocalQueries.get(), is(0));
 		assertThat(discoveredQueries.get(), is(1));
@@ -550,7 +548,7 @@ public class NativeBCPKIXOCSPTest
 						new OCSPResponder(secondUnavailableURI.toURL(), root)},
 				true, 1000, -1, null, false);
 
-		assertTrue(result.toString(), result.isValid());
+		assertTrue(result.isValid());
 		assertThat(unavailableQueries.get(), is(1));
 		assertThat(secondUnavailableQueries.get(), is(1));
 		assertThat(discoveredQueries.get(), is(1));
@@ -577,8 +575,8 @@ public class NativeBCPKIXOCSPTest
 				path(target, root), anchors, responders, true, 1000, 60, null,
 				false);
 
-		assertTrue(first.toString(), first.isValid());
-		assertTrue(second.toString(), second.isValid());
+		assertTrue(first.isValid());
+		assertTrue(second.isValid());
 		assertThat(unavailableQueries.get(), is(1));
 		assertThat(goodQueries.get(), is(1));
 	}
@@ -608,7 +606,7 @@ public class NativeBCPKIXOCSPTest
 		assertNativeOCSPFailure(rejectedRequest, 0, false);
 		assertTrue(rejectedRequest.getPrimaryError().getCause() instanceof
 				HTTPException);
-		assertTrue(independentRequest.toString(), independentRequest.isValid());
+		assertTrue(independentRequest.isValid());
 		assertThat(queries.get(), is(2));
 	}
 
@@ -649,7 +647,7 @@ public class NativeBCPKIXOCSPTest
 				new X509Certificate[] {target, root}, anchors, responders, true,
 				1000, -1, null, false);
 
-		assertTrue(result.toString(), result.isValid());
+		assertTrue(result.isValid());
 		assertThat(locations, contains(unavailable.toString()));
 		assertThat(types, contains(StoreUpdateListener.OCSP));
 		assertThat(severities, contains(Severity.WARNING));
@@ -694,8 +692,8 @@ public class NativeBCPKIXOCSPTest
 				path(target, root), anchors, new OCSPResponder[0], false, 1000,
 				-1, null, false);
 
-		assertTrue(arrayResult.toString(), arrayResult.isValid());
-		assertTrue(pathResult.toString(), pathResult.isValid());
+		assertTrue(arrayResult.isValid());
+		assertTrue(pathResult.isValid());
 		assertThat(arrayResult.getValidChain(), contains(target, root));
 		assertThat(pathResult.getValidChain(), contains(target, root));
 	}
@@ -712,7 +710,7 @@ public class NativeBCPKIXOCSPTest
 				new X509Certificate[] {target, root}, anchors,
 				new OCSPResponder[] {responder}, true, 1000, 60, null, false);
 
-		assertTrue(result.toString(), result.isValid());
+		assertTrue(result.isValid());
 		assertThat(result.getValidChain(), contains(target, root));
 	}
 
@@ -736,7 +734,7 @@ public class NativeBCPKIXOCSPTest
 				new X509Certificate[] {target, root}, anchors, responders, true,
 				1000, -1, null, false);
 
-		assertTrue(result.toString(), result.isValid());
+		assertTrue(result.isValid());
 		assertThat(firstQueries.get(), is(1));
 		assertThat(secondQueries.get(), is(1));
 	}
@@ -811,8 +809,8 @@ public class NativeBCPKIXOCSPTest
 				OCSPCheckingMode.IF_AVAILABLE, responders, false,
 				RevocationCheckingOrder.OCSP_CRL);
 
-		assertTrue(arrayResult.toString(), arrayResult.isValid());
-		assertTrue(pathResult.toString(), pathResult.isValid());
+		assertTrue(arrayResult.isValid());
+		assertTrue(pathResult.isValid());
 		assertThat(arrayResult.getValidChain(), contains(target, root));
 		assertThat(pathResult.getValidChain(), contains(target, root));
 		assertThat(queries.get(), is(2));
@@ -826,7 +824,7 @@ public class NativeBCPKIXOCSPTest
 				OCSPCheckingMode.IF_AVAILABLE, new OCSPResponder[0], false,
 				RevocationCheckingOrder.OCSP_CRL);
 
-		assertFalse(result.toString(), result.isValid());
+		assertFalse(result.isValid());
 		assertThat(result.getPrimaryError().getStage(),
 				is(ValidationStage.REVOCATION));
 		assertThat(result.getPrimaryError().getPosition(), is(0));
@@ -851,7 +849,7 @@ public class NativeBCPKIXOCSPTest
 				OCSPCheckingMode.IF_AVAILABLE, responders, true,
 				RevocationCheckingOrder.CRL_OCSP);
 
-		assertTrue(shortCircuited.toString(), shortCircuited.isValid());
+		assertTrue(shortCircuited.isValid());
 		assertNativeOCSPFailure(requireAll, 0, false);
 		assertThat(queries.get(), is(1));
 	}
@@ -875,8 +873,8 @@ public class NativeBCPKIXOCSPTest
 				emptyCRLStore(), OCSPCheckingMode.REQUIRE, responders, true,
 				RevocationCheckingOrder.OCSP_CRL);
 
-		assertTrue(shortCircuited.toString(), shortCircuited.isValid());
-		assertFalse(requireAll.toString(), requireAll.isValid());
+		assertTrue(shortCircuited.isValid());
+		assertFalse(requireAll.isValid());
 		assertThat(requireAll.getPrimaryError().getStage(),
 				is(ValidationStage.REVOCATION));
 		assertThat(queries.get(), is(2));
@@ -938,7 +936,7 @@ public class NativeBCPKIXOCSPTest
 				CrlCheckingMode.IF_PRESENT, OCSPCheckingMode.REQUIRE, responders,
 				false, RevocationCheckingOrder.CRL_OCSP);
 
-		assertTrue(result.toString(), result.isValid());
+		assertTrue(result.isValid());
 		assertThat(queries.get(), is(1));
 	}
 
@@ -950,7 +948,7 @@ public class NativeBCPKIXOCSPTest
 				CrlCheckingMode.IF_PRESENT, OCSPCheckingMode.IF_AVAILABLE,
 				new OCSPResponder[0], false, RevocationCheckingOrder.CRL_OCSP);
 
-		assertTrue(result.toString(), result.isValid());
+		assertTrue(result.isValid());
 	}
 
 	@Test
@@ -969,7 +967,7 @@ public class NativeBCPKIXOCSPTest
 				CrlCheckingMode.IF_PRESENT, OCSPCheckingMode.REQUIRE, responders,
 				false, RevocationCheckingOrder.CRL_OCSP);
 
-		assertFalse(result.toString(), result.isValid());
+		assertFalse(result.isValid());
 		assertThat(result.getPrimaryError().getStage(),
 				is(ValidationStage.REVOCATION));
 		assertThat(queries.get(), is(0));
@@ -995,8 +993,8 @@ public class NativeBCPKIXOCSPTest
 				OCSPCheckingMode.REQUIRE, responders, true,
 				RevocationCheckingOrder.OCSP_CRL);
 
-		assertTrue(shortCircuited.toString(), shortCircuited.isValid());
-		assertFalse(requireAll.toString(), requireAll.isValid());
+		assertTrue(shortCircuited.isValid());
+		assertFalse(requireAll.isValid());
 		assertThat(requireAll.getPrimaryError().getStage(),
 				is(ValidationStage.REVOCATION));
 		assertThat(queries.get(), is(2));
@@ -1023,7 +1021,7 @@ public class NativeBCPKIXOCSPTest
 				path(target, root), anchors, good, 1000, 60);
 
 		assertNativeOCSPFailure(first, 0, false);
-		assertTrue(second.toString(), second.isValid());
+		assertTrue(second.isValid());
 		assertThat(unavailableQueries.get(), is(1));
 		assertThat(goodQueries.get(), is(1));
 	}
@@ -1032,7 +1030,7 @@ public class NativeBCPKIXOCSPTest
 	public void shouldPersistTransportFailureWithoutSerializingException()
 			throws Exception
 	{
-		File diskCache = temporary.newFolder("native-ocsp-failure-cache");
+		File diskCache = temporary;
 		responderServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
 		AtomicInteger queries = new AtomicInteger();
 		byte[] goodResponse = response(null, rootKeyPair.getPrivate(),
@@ -1054,7 +1052,7 @@ public class NativeBCPKIXOCSPTest
 
 		assertNativeOCSPFailure(first, 0, false);
 		assertNativeOCSPFailure(cached, 0, false);
-		assertTrue(recovered.toString(), recovered.isValid());
+		assertTrue(recovered.isValid());
 		assertThat(queries.get(), is(2));
 		assertThat(diskCache.listFiles().length, is(0));
 	}
@@ -1107,7 +1105,7 @@ public class NativeBCPKIXOCSPTest
 				new OCSPResponder[] {new OCSPResponder(localURI.toURL(), root)},
 				false, 1000, -1, null, false);
 
-		assertTrue(result.toString(), result.isValid());
+		assertTrue(result.isValid());
 		assertThat(discoveredQueries.get(), is(1));
 		assertThat(localQueries.get(), is(1));
 	}
@@ -1141,7 +1139,7 @@ public class NativeBCPKIXOCSPTest
 		ValidationResult result = validator.validateWithOCSPFromAIA(
 				new X509Certificate[] {aiaTarget, intermediate, root}, anchors);
 
-		assertFalse(result.toString(), result.isValid());
+		assertFalse(result.isValid());
 		ValidationError error = result.getPrimaryError();
 		assertThat(error.getErrorCode(), is(ValidationErrorCode.PKIX_FAILURE));
 		assertThat(error.getStage(), is(ValidationStage.REVOCATION));
@@ -1288,7 +1286,7 @@ public class NativeBCPKIXOCSPTest
 	private void assertNativeOCSPFailure(ValidationResult result, int position,
 			boolean validatorException)
 	{
-		assertFalse(result.toString(), result.isValid());
+		assertFalse(result.isValid());
 		ValidationError error = result.getPrimaryError();
 		assertThat(error.getErrorCode(), is(ValidationErrorCode.PKIX_FAILURE));
 		assertThat(error.getStage(), is(ValidationStage.REVOCATION));

@@ -4,9 +4,9 @@
  */
 package eu.emi.security.authn.x509.helpers.ssl;
 
-import static org.junit.Assert.assertSame;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 import java.io.FileInputStream;
 import java.security.cert.CertPath;
@@ -21,7 +21,7 @@ import java.util.List;
 
 import javax.net.ssl.X509TrustManager;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import eu.emi.security.authn.x509.CommonX509TrustManager;
 import eu.emi.security.authn.x509.CrlCheckingMode;
@@ -176,17 +176,12 @@ public class SSLTrustManagerTest
 			fail("Invalid certificate chain should be rejected at the TLS boundary");
 		} catch (CertificateException e)
 		{
-			assertTrue("The validator should notify exactly one primary error",
-					observed.size() == 1);
+			assertTrue(observed.size() == 1);
 			ValidationError primary = observed.get(0);
-			assertTrue("Unexpected primary error code",
-					primary.getErrorCode() == expectedCode);
-			assertTrue("Unexpected validation stage",
-					primary.getStage() == expectedStage);
-			assertSame("TLS must retain the native primary cause",
-					primary.getCause(), e.getCause());
-			assertTrue("Unexpected native failure type",
-					causeType.isInstance(e.getCause()));
+			assertTrue(primary.getErrorCode() == expectedCode);
+			assertTrue(primary.getStage() == expectedStage);
+			assertSame(primary.getCause(), e.getCause());
+			assertTrue(causeType.isInstance(e.getCause()));
 		}
 	}
 

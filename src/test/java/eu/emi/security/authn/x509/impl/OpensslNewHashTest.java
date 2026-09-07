@@ -6,11 +6,11 @@ package eu.emi.security.authn.x509.impl;
 
 import javax.security.auth.x500.X500Principal;
 
-import org.junit.Assert;
+import static org.junit.jupiter.api.Assertions.*;
 
 import org.bouncycastle.asn1.x500.RDN;
 import org.bouncycastle.asn1.x500.X500Name;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import eu.emi.security.authn.x509.helpers.trust.OpensslTruststoreHelper;
 
@@ -32,6 +32,6 @@ public class OpensslNewHashTest
 		System.out.println("After: '" + newSubject.getName() +"'");
 		String hash = OpensslTruststoreHelper.getOpenSSLCAHash(subject);
 		System.out.println("hash: " + hash);
-		Assert.assertEquals("b3bac5a6", hash);
+		assertEquals("b3bac5a6", hash);
 	}
 }

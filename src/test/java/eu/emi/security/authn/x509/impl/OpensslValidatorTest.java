@@ -9,9 +9,9 @@ import java.io.InputStream;
 import java.security.cert.X509Certificate;
 import java.util.Collections;
 
-import org.junit.Assert;
+import static org.junit.jupiter.api.Assertions.*;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import eu.emi.security.authn.x509.CrlCheckingMode;
 import eu.emi.security.authn.x509.OCSPCheckingMode;
@@ -38,7 +38,7 @@ public class OpensslValidatorTest
 				System.out.println(level + " " + type + " location: " + location + " cause: " + cause);
 				if (cause != null && level != Severity.NOTIFICATION) {
 					cause.printStackTrace();
-					Assert.fail("Got error");
+					fail("Got error");
 				}
 			}
 		}));
@@ -49,13 +49,13 @@ public class OpensslValidatorTest
 				"src/test/resources/fixtures/openssl-validation/chains/unusual-dn.pem"),
 				Encoding.PEM);
 		ValidationResult result = validator1.validate(cert);
-		Assert.assertTrue(result.toString(), result.isValid());
+		assertTrue(result.isValid());
 
 		X509Certificate[] cert2 = CertificateUtils.loadCertificateChain(new FileInputStream(
 				"src/test/resources/fixtures/openssl-validation/chains/sub-ca-issued.pem"),
 				Encoding.PEM);
 		ValidationResult result2 = validator1.validate(cert2);
-		Assert.assertTrue(result2.toString(), result2.isValid());
+		assertTrue(result2.isValid());
 		validator1.dispose();
 	}
 	
@@ -68,13 +68,13 @@ public class OpensslValidatorTest
 				"src/test/resources/fixtures/openssl-validation/chains/unusual-dn.pem"),
 				Encoding.PEM);
 		ValidationResult result = validator1.validate(cert);
-		Assert.assertTrue(result.toString(), result.isValid());
+		assertTrue(result.isValid());
 
 		X509Certificate[] cert2 = CertificateUtils.loadCertificateChain(new FileInputStream(
 				"src/test/resources/fixtures/openssl-validation/chains/sub-ca-issued.pem"),
 				Encoding.PEM);
 		ValidationResult result2 = validator1.validate(cert2);
-		Assert.assertTrue(result2.toString(), result2.isValid());
+		assertTrue(result2.isValid());
 		validator1.dispose();
 	}
 	
@@ -90,15 +90,12 @@ public class OpensslValidatorTest
 		InputStream is = new FileInputStream("src/test/resources/test-pems/expiredcert.pem");
 		X509Certificate[] certChain = CertificateUtils.loadCertificateChain(is, Encoding.PEM);
 		ValidationResult result = validator1.validate(certChain);
-		Assert.assertFalse("Expired certificate is valid", result.isValid());
-		Assert.assertEquals("Expected one primary error: " + result, 1,
-				result.getErrors().size());
-		Assert.assertEquals(0, result.getPrimaryError().getPosition());
-		Assert.assertEquals(ValidationStage.PATH_VALIDATION,
+		assertFalse(result.isValid());
+		assertEquals(1, result.getErrors().size());
+		assertEquals(0, result.getPrimaryError().getPosition());
+		assertEquals(ValidationStage.PATH_VALIDATION,
 				result.getPrimaryError().getStage());
-		Assert.assertTrue("Got wrong primary message: " + result.getPrimaryError(),
-				result.getPrimaryError().getMessage().contains("expired"));
-		
+		assertTrue(result.getPrimaryError().getMessage().contains("expired"));
 		validator1.dispose();
 	}
 }

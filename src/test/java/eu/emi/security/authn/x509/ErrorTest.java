@@ -4,7 +4,7 @@
  */
 package eu.emi.security.authn.x509;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.FileInputStream;
 import java.security.cert.CertPathValidatorException;
@@ -12,7 +12,7 @@ import java.security.cert.X509Certificate;
 import java.util.Collections;
 import java.util.HashSet;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import eu.emi.security.authn.x509.impl.CertificateUtils;
 import eu.emi.security.authn.x509.impl.CertificateUtils.Encoding;

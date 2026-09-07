@@ -5,17 +5,16 @@
 package eu.emi.security.authn.x509.impl;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 import java.io.IOException;
 
 import javax.security.auth.x500.X500Principal;
 
 import org.bouncycastle.asn1.x500.style.BCStyle;
-import org.junit.Assert;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import eu.emi.security.authn.x509.helpers.DNComparator;
 
@@ -155,12 +154,12 @@ public class X500NameUtilsTest
 		try
 		{
 			X500Principal x500 = X500NameUtils.getX500Principal("CN=a,O=test,EMAIL=some@email.net,Gender=FEMALE");
-			Assert.assertEquals("CN=a, O=test, EMAILADDRESS=some@email.net, OID.1.3.6.1.5.5.7.9.3=FEMALE", 
+			assertEquals("CN=a, O=test, EMAILADDRESS=some@email.net, OID.1.3.6.1.5.5.7.9.3=FEMALE", 
 					x500.toString());
 		} catch (IOException e)
 		{
 			e.printStackTrace();
-			Assert.fail(e.toString());
+			fail(e.toString());
 		}
 	}
 }

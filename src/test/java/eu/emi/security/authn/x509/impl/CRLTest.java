@@ -4,6 +4,13 @@
  */
 package eu.emi.security.authn.x509.impl;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
+
 import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -30,18 +37,14 @@ import java.util.function.Predicate;
 
 import javax.security.auth.x500.X500Principal;
 
-import static org.junit.Assert.*;
-
 import org.apache.commons.io.FileUtils;
 import org.bouncycastle.util.encoders.Base64;
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.experimental.categories.Category;
-import org.junit.rules.TemporaryFolder;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import com.sun.net.httpserver.HttpServer;
 
-import eu.emi.security.authn.x509.RiskyIntegrationTests;
 import eu.emi.security.authn.x509.StoreUpdateListener;
 import eu.emi.security.authn.x509.StoreUpdateListener.Severity;
 import eu.emi.security.authn.x509.helpers.ObserversHandler;
@@ -51,8 +54,10 @@ import eu.emi.security.authn.x509.helpers.trust.OpensslTruststoreHelper;
 
 public class CRLTest
 {
-	@Rule
-	public TemporaryFolder temporary = new TemporaryFolder();
+	
+	
+	@TempDir
+	public File temporary;
 
 	static
 	{
@@ -60,15 +65,10 @@ public class CRLTest
 		CertificateUtils.configureSecProvider();
 	}
 	
-	private File initDir() throws IOException
-	{
-		return temporary.newFolder("diskCache");
-	}
-	
 	@Test
 	public void testUpdateCleanup() throws Exception
 	{
-		File dir = initDir();
+		File dir = temporary;
 		
 		Timer t = new Timer(true);
 		List<String> crls = new ArrayList<String>();
@@ -100,7 +100,7 @@ public class CRLTest
 	@Test
 	public void testNotificationsAndUpdate() throws Exception
 	{
-		File dir = initDir();
+		File dir = temporary;
 		HttpServer server = HttpServer.create(new InetSocketAddress(
 				InetAddress.getLoopbackAddress(), 0), 0);
 		server.createContext("/", exchange -> {
@@ -139,8 +139,8 @@ public class CRLTest
 					notification -> notification.level != Severity.NOTIFICATION),
 					crlURL1, crlURL2);
 			store.setUpdateInterval(-1);
-			assertNull("Notification received after updates were disabled",
-					notifications.poll(150, TimeUnit.MILLISECONDS));
+			assertNull(notifications.poll(150, TimeUnit.MILLISECONDS),
+					"Notification received after updates were disabled");
 		} finally
 		{
 			store.dispose();
@@ -172,7 +172,7 @@ public class CRLTest
 		server.setName("crl-timeout-test-server");
 		server.start();
 		
-		File dir = initDir();
+		File dir = temporary;
 		
 		Timer t = new Timer(true);
 		List<String> crls = new ArrayList<String>();
@@ -195,7 +195,7 @@ public class CRLTest
 			assertEquals(crlURL1, notification.location);
 			assertTrue(notification.cause instanceof SocketTimeoutException);
 			long elapsedMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
-			assertTrue("Timeout took " + elapsedMillis + " ms", elapsedMillis < 500);
+			assertTrue(elapsedMillis < 500, "Timeout took " + elapsedMillis + " ms");
 		} finally
 		{
 			store.dispose();
@@ -203,14 +203,14 @@ public class CRLTest
 			serverSocket.close();
 			server.join(3000);
 		}
-		assertFalse("Timeout server thread did not stop", server.isAlive());
-		assertNull("Timeout server failed", serverFailure.get());
+		assertFalse(server.isAlive(), "Timeout server thread did not stop");
+		assertNull(serverFailure.get(), "Timeout server failed");
 	}
 	
 	@Test
 	public void testLoadPlain() throws Exception
 	{
-		File dir = initDir();
+		File dir = temporary;
 		byte[] remoteCrl = FileUtils.readFileToByteArray(new File(
 				"src/test/resources/test-pems/crls/relaxationsubca.crl"));
 		HttpServer server = HttpServer.create(new InetSocketAddress(
@@ -258,7 +258,7 @@ public class CRLTest
 	}
 
 	@Test
-	@Category(RiskyIntegrationTests.class)
+	@Tag("RiskyIntegrationTests")
 	public void testMemoryFootprint() throws Exception
 	{
 		File dir = new File("target/test-tmp/crls/copiedCrls");
@@ -394,8 +394,8 @@ public class CRLTest
 			long remaining = deadline - System.nanoTime();
 			StoreNotification notification = remaining <= 0 ? null :
 					notifications.poll(remaining, TimeUnit.NANOSECONDS);
-			assertNotNull("Timed out waiting for store notification " +
-					(received.size() + 1) + " of " + count, notification);
+			assertNotNull(notification, "Timed out waiting for store notification " +
+					(received.size() + 1) + " of " + count);
 			if (predicate.test(notification))
 				received.add(notification);
 		}

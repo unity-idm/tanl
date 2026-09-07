@@ -16,8 +16,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
-import org.junit.Assert;
-import org.junit.Test;
+import static org.junit.jupiter.api.Assertions.*;
+import org.junit.jupiter.api.Test;
 
 import eu.emi.security.authn.x509.ValidationResult;
 import eu.emi.security.authn.x509.impl.CertificateUtils.Encoding;
@@ -54,7 +54,7 @@ public class OpensslValidatorConcurrencyTest
 						for (int operation = 0; operation < 250; operation++)
 						{
 							ValidationResult result = validator.validate(chain);
-							Assert.assertTrue(result.toString(), result.isValid());
+							assertTrue(result.isValid());
 						}
 						return null;
 					}

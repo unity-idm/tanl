@@ -4,6 +4,11 @@
  */
 package eu.emi.security.authn.x509.impl;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
+
 import java.io.FileReader;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -23,9 +28,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import javax.net.ssl.SSLHandshakeException;
 import javax.net.ssl.SSLSocket;
 
-import org.junit.Assert;
-
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import eu.emi.security.authn.x509.X509CertChainValidator;
 import eu.emi.security.authn.x509.X509Credential;
@@ -95,8 +98,7 @@ public class TestSSLHelpers
 			{
 				SocketAddress socketAddr = ss.getLocalSocketAddress();
 				client.connect(socketAddr, 1000);
-				Assert.assertTrue("SSL server did not accept the connection",
-						serverAccepted.await(1, TimeUnit.SECONDS));
+				assertTrue(serverAccepted.await(1, TimeUnit.SECONDS));
 				client.setSoTimeout(1000);
 				if (shouldSucceed)
 				{
@@ -105,21 +107,20 @@ public class TestSSLHelpers
 					byte value = 12;
 					os.write(value);
 					os.flush();
-					Assert.assertEquals(value,
-							received.get(3, TimeUnit.SECONDS).intValue());
+					assertEquals(value, received.get(3, TimeUnit.SECONDS).intValue());
 				} else
 				{
-					Assert.assertThrows(SSLHandshakeException.class,
+					assertThrows(SSLHandshakeException.class,
 							() -> ((SSLSocket) client).startHandshake());
 					client.close();
 					acceptedSocket.get().close();
 					try
 					{
 						received.get(3, TimeUnit.SECONDS);
-						Assert.fail("Server accepted an invalid SSL channel");
+						fail("Server accepted an invalid SSL channel");
 					} catch (ExecutionException expected)
 					{
-						Assert.assertTrue(expected.getCause() instanceof IOException);
+						assertTrue(expected.getCause() instanceof IOException);
 					}
 				}
 			} finally
@@ -129,8 +130,7 @@ public class TestSSLHelpers
 		} finally
 		{
 			serverExecutor.shutdownNow();
-			Assert.assertTrue("SSL server thread did not stop",
-					serverExecutor.awaitTermination(3, TimeUnit.SECONDS));
+			assertTrue(serverExecutor.awaitTermination(3, TimeUnit.SECONDS));
 		}
 	}
 }

@@ -4,17 +4,17 @@
  */
 package eu.emi.security.authn.x509.impl;
 
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.FileInputStream;
 import java.security.cert.X509Certificate;
 import java.util.Collections;
 
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 import eu.emi.security.authn.x509.ValidationResult;
 import eu.emi.security.authn.x509.impl.CertificateUtils.Encoding;
@@ -30,18 +30,17 @@ public class ProxyRejectionTest
 	private DirectoryCertChainValidator validator;
 	private X509Certificate issuer;
 
-	@Before
+	@BeforeEach
 	public void setUp() throws Exception
 	{
 		validator = new DirectoryCertChainValidator(
 				Collections.singletonList(TRUST_ANCHOR), Encoding.PEM,
 				-1, 0, null, new ValidatorParamsExt(RevocationParametersExt.IGNORE));
 		issuer = loadCertificate(ISSUER);
-		assertTrue("The non-proxy issuer must remain valid", validator.validate(
-				new X509Certificate[] {issuer}).isValid());
+		assertTrue(validator.validate(new X509Certificate[] {issuer}).isValid());
 	}
 
-	@After
+	@AfterEach
 	public void tearDown()
 	{
 		validator.dispose();
@@ -51,18 +50,16 @@ public class ProxyRejectionTest
 	public void shouldRejectLegacyProxyThroughNormalPkixValidation() throws Exception
 	{
 		ValidationResult result = validate("legacy-proxy.pem");
-
-		assertFalse(result.toString(), result.isValid());
-		assertEquals(result.toString(), 1, result.getErrors().size());
+		assertFalse(result.isValid());
+		assertEquals(1, result.getErrors().size());
 	}
 
 	@Test
 	public void shouldRejectRfc3820ProxyThroughNormalPkixValidation() throws Exception
 	{
 		ValidationResult result = validate("rfc3820-proxy.pem");
-
-		assertFalse(result.toString(), result.isValid());
-		assertEquals(result.toString(), 1, result.getErrors().size());
+		assertFalse(result.isValid());
+		assertEquals(1, result.getErrors().size());
 	}
 
 	private ValidationResult validate(String proxyCertificate) throws Exception

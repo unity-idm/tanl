@@ -7,12 +7,12 @@
  */
 package eu.emi.security.authn.x509.impl;
 
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import java.io.FileInputStream;
 import java.security.cert.X509Certificate;
 
-import org.junit.Assert;
-
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import eu.emi.security.authn.x509.ValidationResult;
 import eu.emi.security.authn.x509.impl.CertificateUtils.Encoding;
@@ -29,12 +29,12 @@ public class RolloverTest
 				new FileInputStream("src/test/resources/rollover/user-from-old.pem"), 
 				Encoding.PEM);
 		ValidationResult result = validator.validate(cert1);
-		Assert.assertTrue(result.toString(), result.isValid());
-		
+		assertTrue(result.isValid());
+
 		X509Certificate[] cert2 = CertificateUtils.loadCertificateChain(
 				new FileInputStream("src/test/resources/rollover/user-from-new.pem"), 
 				Encoding.PEM);
 		ValidationResult result2 = validator.validate(cert2);
-		Assert.assertTrue(result2.toString(), result2.isValid());
+		assertTrue(result2.isValid());
 	}
 }

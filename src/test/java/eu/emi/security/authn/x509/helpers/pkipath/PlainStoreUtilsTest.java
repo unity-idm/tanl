@@ -4,11 +4,11 @@
  */
 package eu.emi.security.authn.x509.helpers.pkipath;
 
-import static org.junit.Assert.fail;
+import static org.junit.jupiter.api.Assertions.fail;
 
 import java.util.Collections;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class PlainStoreUtilsTest
 {

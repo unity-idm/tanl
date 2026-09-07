@@ -8,18 +8,17 @@ import java.io.FileInputStream;
 import java.net.URI;
 import java.security.cert.X509Certificate;
 
-import org.junit.Ignore;
-import org.junit.Test;
-import org.junit.experimental.categories.Category;
+import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
 
 import eu.emi.security.authn.x509.CrlCheckingMode;
 import eu.emi.security.authn.x509.OCSPCheckingMode;
 import eu.emi.security.authn.x509.OCSPParametes;
 import eu.emi.security.authn.x509.OCSPResponder;
-import eu.emi.security.authn.x509.RiskyIntegrationTests;
 import eu.emi.security.authn.x509.impl.CertificateUtils;
-import eu.emi.security.authn.x509.impl.NISTValidatorTestBase;
 import eu.emi.security.authn.x509.impl.CertificateUtils.Encoding;
+import eu.emi.security.authn.x509.impl.NISTValidatorTestBase;
 
 
 /**
@@ -32,8 +31,8 @@ import eu.emi.security.authn.x509.impl.CertificateUtils.Encoding;
 public class OCSPIntegrationTest extends NISTValidatorTestBase
 {
 	@Test
-	@Category(RiskyIntegrationTests.class)
-	@Ignore
+	@Tag("RiskyIntegrationTests")
+	@Disabled
 	public void test() throws Exception
 	{
 		String responder = "http://sr.symcd.com";

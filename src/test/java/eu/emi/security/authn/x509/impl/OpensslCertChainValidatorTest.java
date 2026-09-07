@@ -64,8 +64,6 @@ import java.util.concurrent.ThreadLocalRandom;
 
 import javax.security.auth.x500.X500Principal;
 
-import com.sun.net.httpserver.HttpServer;
-
 import org.bouncycastle.asn1.ASN1ObjectIdentifier;
 import org.bouncycastle.asn1.x500.X500Name;
 import org.bouncycastle.asn1.x509.AccessDescription;
@@ -84,9 +82,11 @@ import org.bouncycastle.openssl.jcajce.JcaPEMWriter;
 import org.bouncycastle.operator.ContentSigner;
 import org.bouncycastle.operator.OperatorCreationException;
 import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+import com.sun.net.httpserver.HttpServer;
 
 import eu.emi.security.authn.x509.CrlCheckingMode;
 import eu.emi.security.authn.x509.OCSPCheckingMode;
@@ -94,7 +94,6 @@ import eu.emi.security.authn.x509.OCSPParametes;
 import eu.emi.security.authn.x509.OCSPResponder;
 import eu.emi.security.authn.x509.RevocationParameters;
 import eu.emi.security.authn.x509.StoreUpdateListener;
-import eu.emi.security.authn.x509.StoreUpdateListener.Severity;
 import eu.emi.security.authn.x509.ValidationErrorCode;
 import eu.emi.security.authn.x509.ValidationResult;
 import eu.emi.security.authn.x509.ValidationStage;
@@ -113,7 +112,7 @@ public class OpensslCertChainValidatorTest
 	private Path trustStore;
 	private HttpServer ocspServer;
 
-	@Before
+	@BeforeEach
 	public void setup() throws IOException {
 		validator = null;
 		ocspServer = null;
@@ -122,7 +121,7 @@ public class OpensslCertChainValidatorTest
 		Files.createDirectories(trustStore);
 	}
 
-	@After
+	@AfterEach
 	public void tearDown() throws IOException {
 		if (ocspServer != null) {
 			ocspServer.stop(0);

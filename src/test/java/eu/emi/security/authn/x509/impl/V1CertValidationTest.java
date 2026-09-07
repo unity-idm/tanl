@@ -4,12 +4,12 @@
  */
 package eu.emi.security.authn.x509.impl;
 
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import java.io.FileInputStream;
 import java.security.cert.X509Certificate;
 
-import org.junit.Assert;
-
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import eu.emi.security.authn.x509.ValidationResult;
 import eu.emi.security.authn.x509.impl.CertificateUtils.Encoding;
@@ -28,7 +28,7 @@ public class V1CertValidationTest
 				Encoding.PEM);
 		
 		ValidationResult result = validator.validate(cert1);
-		Assert.assertTrue(result.toString(), result.isValid());
+		assertTrue(result.isValid());
 		validator.dispose();
 	}
 }

@@ -14,10 +14,9 @@ import java.nio.file.Files;
 import java.nio.file.StandardOpenOption;
 import java.util.concurrent.atomic.AtomicLong;
 
-import org.junit.Before;
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.rules.TemporaryFolder;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import eu.emi.security.authn.x509.OCSPParametes;
 
@@ -25,13 +24,13 @@ public class NativeOCSPResponderFailureCacheTest
 {
 	private static final URI RESPONDER = URI.create("http://ocsp.example.test/status");
 
-	@Rule
-	public TemporaryFolder temporary = new TemporaryFolder();
+	@TempDir
+	public File temporary;
 
 	private AtomicLong now;
 	private NativeOCSPResponderFailureCache cache;
 
-	@Before
+	@BeforeEach
 	public void setUp()
 	{
 		now = new AtomicLong(1000L);
@@ -105,7 +104,7 @@ public class NativeOCSPResponderFailureCacheTest
 	@Test
 	public void shouldPersistAndLoadOnlyFailureMetadata() throws Exception
 	{
-		File directory = new File(temporary.getRoot(), "new/cache");
+		File directory = temporary;
 		cache.put(RESPONDER, 60, directory);
 		NativeOCSPResponderFailureCache reloaded = newCache();
 
@@ -120,7 +119,7 @@ public class NativeOCSPResponderFailureCacheTest
 	@Test
 	public void shouldDiscardCorruptPersistentEntry() throws Exception
 	{
-		File directory = temporary.newFolder("corrupt-cache");
+		File directory = temporary;
 		cache.put(RESPONDER, 60, directory);
 		File cacheFile = directory.listFiles()[0];
 		Files.write(cacheFile.toPath(), "corrupt".getBytes(StandardCharsets.US_ASCII),
@@ -133,7 +132,7 @@ public class NativeOCSPResponderFailureCacheTest
 	@Test
 	public void shouldRemoveMemoryAndPersistentEntries() throws Exception
 	{
-		File directory = temporary.newFolder("remove-cache");
+		File directory = temporary;
 		cache.put(RESPONDER, 60, directory);
 
 		cache.remove(RESPONDER, directory);

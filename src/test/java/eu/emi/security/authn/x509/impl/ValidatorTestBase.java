@@ -4,6 +4,10 @@
  */
 package eu.emi.security.authn.x509.impl;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
+
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.security.cert.X509Certificate;
@@ -11,10 +15,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Set;
-
-import static org.junit.Assert.*;
-
-import org.junit.Assert;
 
 import eu.emi.security.authn.x509.CrlCheckingMode;
 import eu.emi.security.authn.x509.OCSPCheckingMode;
@@ -83,7 +83,7 @@ public class ValidatorTestBase
 		ValidationResult result = validatePath(trustAnchorPrefix, trustAnchors,
 				trustAnchorSuffix, crlPrefix, crls, crlSuffix, toCheck,
 				revocationSupport, ocspParams);
-		assertEquals(result.toString(), expectedValid, result.isValid());
+		assertEquals(expectedValid, result.isValid());
 	}
 
 	private ValidationResult validatePath(
@@ -113,7 +113,7 @@ public class ValidatorTestBase
 			{
 				if (level.equals(Severity.ERROR))
 				{
-					Assert.fail("Error reading a truststore: " + 
+					fail("Error reading a truststore: " + 
 							location + " " + type + " " + cause);
 				}
 			}

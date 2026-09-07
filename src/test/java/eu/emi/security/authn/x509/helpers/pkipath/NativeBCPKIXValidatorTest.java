@@ -9,10 +9,10 @@ import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertSame;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.FileInputStream;
 import java.security.cert.CertPath;
@@ -32,8 +32,8 @@ import java.util.List;
 import java.util.Set;
 
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 import eu.emi.security.authn.x509.ValidationError;
 import eu.emi.security.authn.x509.ValidationErrorCategory;
@@ -52,7 +52,7 @@ public class NativeBCPKIXValidatorTest
 	private X509Certificate irrelevantCandidate;
 	private Set<TrustAnchor> anchors;
 
-	@Before
+	@BeforeEach
 	public void setUp() throws Exception
 	{
 		validator = new NativeBCPKIXValidator();
@@ -69,7 +69,7 @@ public class NativeBCPKIXValidatorTest
 		ValidationResult result = validator.validate(new X509Certificate[] {
 				target, root, irrelevantCandidate, intermediate}, anchors);
 
-		assertTrue(result.toString(), result.isValid());
+		assertTrue(result.isValid());
 		assertThat(result.getErrors(), is(empty()));
 		assertThat(result.getValidChain(), contains(target, intermediate, root));
 	}
@@ -81,7 +81,7 @@ public class NativeBCPKIXValidatorTest
 
 		ValidationResult result = validator.validate(path, anchors);
 
-		assertTrue(result.toString(), result.isValid());
+		assertTrue(result.isValid());
 		assertThat(result.getValidChain(), contains(target, intermediate, root));
 	}
 
@@ -92,7 +92,7 @@ public class NativeBCPKIXValidatorTest
 
 		ValidationResult result = validator.validate(path, anchors);
 
-		assertTrue(result.toString(), result.isValid());
+		assertTrue(result.isValid());
 		assertThat(result.getValidChain(), contains(target, intermediate, root));
 	}
 
@@ -101,7 +101,7 @@ public class NativeBCPKIXValidatorTest
 	{
 		ValidationResult result = validator.validate(path(), anchors);
 
-		assertFalse(result.toString(), result.isValid());
+		assertFalse(result.isValid());
 		assertThat(result.getErrors(), hasSize(1));
 		assertThat(result.getPrimaryError().getErrorCode(),
 				is(ValidationErrorCode.INVALID_INPUT));
@@ -114,11 +114,11 @@ public class NativeBCPKIXValidatorTest
 	{
 		X509Certificate[] candidates = {target, irrelevantCandidate, intermediate};
 		ValidationResult builtResult = validator.validate(candidates, anchors);
-		assertTrue(builtResult.toString(), builtResult.isValid());
+		assertTrue(builtResult.isValid());
 
 		ValidationResult assertedResult = validator.validate(path(candidates), anchors);
 
-		assertFalse(assertedResult.toString(), assertedResult.isValid());
+		assertFalse(assertedResult.isValid());
 		assertThat(assertedResult.getErrors(), hasSize(1));
 	}
 
@@ -128,8 +128,8 @@ public class NativeBCPKIXValidatorTest
 		ValidationResult arrayResult = validator.validate(new X509Certificate[] {root}, anchors);
 		ValidationResult pathResult = validator.validate(path(root), anchors);
 
-		assertTrue(arrayResult.toString(), arrayResult.isValid());
-		assertTrue(pathResult.toString(), pathResult.isValid());
+		assertTrue(arrayResult.isValid());
+		assertTrue(pathResult.isValid());
 		assertThat(arrayResult.getValidChain(), contains(root));
 		assertThat(pathResult.getValidChain(), contains(root));
 	}
@@ -143,7 +143,7 @@ public class NativeBCPKIXValidatorTest
 		ValidationResult result = validator.validate(
 				new X509Certificate[] {intermediate}, nonSelfSignedAnchor);
 
-		assertFalse(result.toString(), result.isValid());
+		assertFalse(result.isValid());
 		assertThat(result.getErrors(), hasSize(1));
 	}
 
@@ -154,7 +154,7 @@ public class NativeBCPKIXValidatorTest
 
 		ValidationResult result = validator.validate(path(expired, intermediate, root), anchors);
 
-		assertFalse(result.toString(), result.isValid());
+		assertFalse(result.isValid());
 		assertThat(result.getErrors(), hasSize(1));
 		assertThat(result.getValidChain(), is((java.util.List<X509Certificate>) null));
 		ValidationError error = result.getPrimaryError();
@@ -173,7 +173,7 @@ public class NativeBCPKIXValidatorTest
 		ValidationResult result = validator.validate(new X509Certificate[] {
 				target, irrelevantCandidate}, anchors);
 
-		assertFalse(result.toString(), result.isValid());
+		assertFalse(result.isValid());
 		ValidationError error = result.getPrimaryError();
 		assertThat(error.getErrorCode(), is(ValidationErrorCode.PATH_BUILDING_FAILED));
 		assertThat(error.getErrorCategory(), is(ValidationErrorCategory.PATH));
@@ -191,7 +191,7 @@ public class NativeBCPKIXValidatorTest
 		ValidationResult result = validator.validate(
 				path(badSignature, intermediate, root), anchors);
 
-		assertFalse(result.toString(), result.isValid());
+		assertFalse(result.isValid());
 		ValidationError error = result.getPrimaryError();
 		assertThat(error.getErrorCode(), is(ValidationErrorCode.INVALID_SIGNATURE));
 		assertThat(error.getErrorCategory(), is(ValidationErrorCategory.CERTIFICATE));
@@ -210,7 +210,7 @@ public class NativeBCPKIXValidatorTest
 		ValidationResult result = validator.validate(
 				path(issuedCertificate, invalidIssuer, root), anchors);
 
-		assertFalse(result.toString(), result.isValid());
+		assertFalse(result.isValid());
 		ValidationError error = result.getPrimaryError();
 		assertThat(error.getErrorCode(), is(ValidationErrorCode.PKIX_FAILURE));
 		assertThat(error.getErrorCategory(), is(ValidationErrorCategory.OTHER));
@@ -228,7 +228,7 @@ public class NativeBCPKIXValidatorTest
 
 		ValidationResult result = validator.validate(path(unsupported, root), anchors);
 
-		assertFalse(result.toString(), result.isValid());
+		assertFalse(result.isValid());
 		ValidationError error = result.getPrimaryError();
 		assertThat(error.getErrorCode(), is(ValidationErrorCode.PKIX_FAILURE));
 		assertThat(error.getErrorCategory(), is(ValidationErrorCategory.OTHER));
@@ -243,7 +243,7 @@ public class NativeBCPKIXValidatorTest
 		ValidationResult result = validator.validate(new X509Certificate[] {
 				target, intermediate}, new HashSet<TrustAnchor>());
 
-		assertFalse(result.toString(), result.isValid());
+		assertFalse(result.isValid());
 		assertThat(result.getErrors(), hasSize(1));
 		assertThat(result.getPrimaryError().getErrorCode(),
 				is(ValidationErrorCode.NO_TRUST_ANCHOR));
@@ -262,8 +262,8 @@ public class NativeBCPKIXValidatorTest
 		ValidationResult asserted = validator.validateWithCRLs(
 				path(target, intermediate, root), anchors, crls);
 
-		assertTrue(result.toString(), result.isValid());
-		assertTrue(asserted.toString(), asserted.isValid());
+		assertTrue(result.isValid());
+		assertTrue(asserted.isValid());
 		assertThat(result.getValidChain(), contains(target, intermediate, root));
 		assertThat(asserted.getValidChain(), contains(target, intermediate, root));
 	}
@@ -277,7 +277,7 @@ public class NativeBCPKIXValidatorTest
 				revoked, intermediate, root}, anchors,
 				crlStore("GoodCACRL", "TrustAnchorRootCRL"));
 
-		assertFalse(result.toString(), result.isValid());
+		assertFalse(result.isValid());
 		ValidationError error = result.getPrimaryError();
 		assertThat(error.getErrorCode(), is(ValidationErrorCode.PKIX_FAILURE));
 		assertThat(error.getStage(), is(ValidationStage.REVOCATION));
@@ -293,7 +293,7 @@ public class NativeBCPKIXValidatorTest
 		ValidationResult result = validator.validateWithCRLs(new X509Certificate[] {
 				target, intermediate, root}, anchors, crlStore());
 
-		assertFalse(result.toString(), result.isValid());
+		assertFalse(result.isValid());
 		ValidationError error = result.getPrimaryError();
 		assertThat(error.getErrorCode(), is(ValidationErrorCode.PKIX_FAILURE));
 		assertThat(error.getStage(), is(ValidationStage.REVOCATION));
@@ -312,7 +312,7 @@ public class NativeBCPKIXValidatorTest
 				expiredCrlTarget, expiredCrlIssuer, root}, anchors,
 				crlStore("OldCRLnextUpdateCACRL", "TrustAnchorRootCRL"));
 
-		assertFalse(result.toString(), result.isValid());
+		assertFalse(result.isValid());
 		ValidationError error = result.getPrimaryError();
 		assertThat(error.getErrorCode(), is(ValidationErrorCode.PKIX_FAILURE));
 		assertThat(error.getStage(), is(ValidationStage.REVOCATION));
@@ -331,7 +331,7 @@ public class NativeBCPKIXValidatorTest
 				targetWithBadCrl, issuerWithBadCrl, root}, anchors,
 				crlStore("BadCRLSignatureCACRL", "TrustAnchorRootCRL"));
 
-		assertFalse(result.toString(), result.isValid());
+		assertFalse(result.isValid());
 		ValidationError error = result.getPrimaryError();
 		assertThat(error.getErrorCode(), is(ValidationErrorCode.PKIX_FAILURE));
 		assertThat(error.getStage(), is(ValidationStage.REVOCATION));
@@ -349,8 +349,8 @@ public class NativeBCPKIXValidatorTest
 		ValidationResult pathResult = validator.validateWithCRLsIfPresent(
 				path(target, intermediate, root), anchors, crlStore());
 
-		assertTrue(arrayResult.toString(), arrayResult.isValid());
-		assertTrue(pathResult.toString(), pathResult.isValid());
+		assertTrue(arrayResult.isValid());
+		assertTrue(pathResult.isValid());
 		assertThat(arrayResult.getValidChain(), contains(target, intermediate, root));
 		assertThat(pathResult.getValidChain(), contains(target, intermediate, root));
 	}
@@ -362,7 +362,7 @@ public class NativeBCPKIXValidatorTest
 				new X509Certificate[] {target, intermediate, root}, anchors,
 				crlStore("GoodCACRL"));
 
-		assertTrue(result.toString(), result.isValid());
+		assertTrue(result.isValid());
 		assertThat(result.getValidChain(), contains(target, intermediate, root));
 	}
 
@@ -375,7 +375,7 @@ public class NativeBCPKIXValidatorTest
 				new X509Certificate[] {revoked, intermediate, root}, anchors,
 				crlStore("GoodCACRL"));
 
-		assertFalse(result.toString(), result.isValid());
+		assertFalse(result.isValid());
 		assertThat(result.getPrimaryError().getStage(),
 				is(ValidationStage.REVOCATION));
 		assertThat(result.getPrimaryError().getPosition(), is(0));
@@ -392,7 +392,7 @@ public class NativeBCPKIXValidatorTest
 				new X509Certificate[] {expiredCrlTarget, expiredCrlIssuer, root},
 				anchors, crlStore("OldCRLnextUpdateCACRL"));
 
-		assertFalse(result.toString(), result.isValid());
+		assertFalse(result.isValid());
 		assertThat(result.getPrimaryError().getStage(),
 				is(ValidationStage.REVOCATION));
 		assertThat(result.getPrimaryError().getPosition(), is(0));
@@ -408,7 +408,7 @@ public class NativeBCPKIXValidatorTest
 				path(badCrlTarget, badCrlIssuer, root), anchors,
 				crlStore("BadCRLSignatureCACRL"));
 
-		assertFalse(result.toString(), result.isValid());
+		assertFalse(result.isValid());
 		assertThat(result.getPrimaryError().getStage(),
 				is(ValidationStage.REVOCATION));
 		assertThat(result.getPrimaryError().getPosition(), is(0));
@@ -421,7 +421,7 @@ public class NativeBCPKIXValidatorTest
 				new X509Certificate[] {target, intermediate, root}, anchors,
 				crlStore("LongSerialNumberCACRL"));
 
-		assertTrue(result.toString(), result.isValid());
+		assertTrue(result.isValid());
 	}
 
 	@Test
@@ -434,7 +434,7 @@ public class NativeBCPKIXValidatorTest
 				new X509Certificate[] {certificate, issuer, root}, anchors,
 				crlStore("distributionPoint1CACRL"));
 
-		assertTrue(result.toString(), result.isValid());
+		assertTrue(result.isValid());
 		assertThat(result.getValidChain(), contains(certificate, issuer, root));
 	}
 
@@ -448,7 +448,7 @@ public class NativeBCPKIXValidatorTest
 				new X509Certificate[] {certificate, issuer, root}, anchors,
 				crlStore("deltaCRLCA1CRL", "deltaCRLCA1deltaCRL"));
 
-		assertTrue(result.toString(), result.isValid());
+		assertTrue(result.isValid());
 		assertThat(result.getValidChain(), contains(certificate, issuer, root));
 	}
 
@@ -463,7 +463,7 @@ public class NativeBCPKIXValidatorTest
 				new X509Certificate[] {certificate, crlIssuer, issuer, root}, anchors,
 				crlStore("indirectCRLCA4cRLIssuerCRL"));
 
-		assertTrue(result.toString(), result.isValid());
+		assertTrue(result.isValid());
 		assertThat(result.getValidChain(), contains(certificate, issuer, root));
 	}
 

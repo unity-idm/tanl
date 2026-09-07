@@ -7,8 +7,8 @@ package eu.emi.security.authn.x509.helpers.pkipath;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.nullValue;
-import static org.junit.Assert.assertArrayEquals;
-import static org.junit.Assert.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
 
 import java.io.File;
 import java.nio.charset.StandardCharsets;
@@ -17,23 +17,22 @@ import java.nio.file.StandardOpenOption;
 import java.util.Date;
 import java.util.concurrent.atomic.AtomicLong;
 
-import org.junit.Before;
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.rules.TemporaryFolder;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 public class NativeOCSPResponseCacheTest
 {
 	private static final String DISK_KEY =
 			"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
-	@Rule
-	public TemporaryFolder temporary = new TemporaryFolder();
+	@TempDir
+	public File temporary;
 
 	private AtomicLong now;
 	private NativeOCSPResponseCache<String> cache;
 
-	@Before
+	@BeforeEach
 	public void setUp()
 	{
 		now = new AtomicLong(1000L);
@@ -118,7 +117,7 @@ public class NativeOCSPResponseCacheTest
 	@Test
 	public void shouldPersistAndLoadAnEncodedResponse() throws Exception
 	{
-		File directory = temporary.newFolder("ocsp-cache");
+		File directory = temporary;
 		cache.put("memory-key", new byte[] {1, 2, 3}, new Date(9000L), 60,
 				directory, DISK_KEY);
 		NativeOCSPResponseCache<String> reloaded = newCache();
@@ -134,7 +133,7 @@ public class NativeOCSPResponseCacheTest
 	@Test
 	public void shouldDiscardCorruptPersistentEntry() throws Exception
 	{
-		File directory = temporary.newFolder("corrupt-cache");
+		File directory = temporary;
 		cache.put("memory-key", new byte[] {1, 2, 3}, null, 60,
 				directory, DISK_KEY);
 		File cacheFile = directory.listFiles()[0];
@@ -149,7 +148,7 @@ public class NativeOCSPResponseCacheTest
 	@Test
 	public void shouldDiscardExpiredPersistentEntry() throws Exception
 	{
-		File directory = temporary.newFolder("expired-cache");
+		File directory = temporary;
 		cache.put("memory-key", new byte[] {1}, null, 2, directory, DISK_KEY);
 		now.set(3000L);
 
@@ -161,7 +160,7 @@ public class NativeOCSPResponseCacheTest
 	@Test
 	public void shouldCreateConfiguredCacheDirectory() throws Exception
 	{
-		File directory = new File(temporary.getRoot(), "new/cache");
+		File directory = temporary;
 
 		cache.put("memory-key", new byte[] {1}, null, 60, directory, DISK_KEY);
 

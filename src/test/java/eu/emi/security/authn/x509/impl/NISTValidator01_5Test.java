@@ -4,7 +4,7 @@
  */
 package eu.emi.security.authn.x509.impl;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 /**
  * @see http://csrc.nist.gov/groups/ST/crypto_apps_infra/pki/pkitesting.html

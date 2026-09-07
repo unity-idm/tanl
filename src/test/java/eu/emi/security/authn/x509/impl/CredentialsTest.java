@@ -4,7 +4,7 @@
  */
 package eu.emi.security.authn.x509.impl;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
@@ -22,13 +22,11 @@ import java.security.Security;
 import java.security.cert.X509Certificate;
 import java.security.spec.DSAParameterSpec;
 
-import org.junit.Assert;
-
 import org.bouncycastle.asn1.cryptopro.CryptoProObjectIdentifiers;
 import org.bouncycastle.jce.ECGOST3410NamedCurveTable;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.bouncycastle.jce.spec.GOST3410ParameterSpec;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import eu.emi.security.authn.x509.X509Credential;
 import eu.emi.security.authn.x509.helpers.CertificateHelpers;
@@ -175,13 +173,13 @@ public class CredentialsTest
 				CertificateUtilsTest.PFX + "pk-nonExisting.pem", 
 				CertificateUtilsTest.PFX + "cert-1.pem",
 				CertificateUtilsTest.KS_P);
-			Assert.fail("Creation of credential with not existing file suceeded");
+			fail("Creation of credential with not existing file suceeded");
 		} catch (FileNotFoundException e)
 		{
 			//expected
 		} catch (Exception e)
 		{
-			Assert.fail("Wrong exception, instead of missing file " + e.toString());
+			fail("Wrong exception, instead of missing file " + e.toString());
 		}
 		
 		try
@@ -190,13 +188,13 @@ public class CredentialsTest
 				CertificateUtilsTest.PFX + "pk-1.pem", 
 				"src/test/resources/ca-v1/usercert.pem",
 				CertificateUtilsTest.KS_P).getKeyStore();
-			Assert.fail("Creation of credential with pk not matching certificate suceeded");
+			fail("Creation of credential with pk not matching certificate suceeded");
 		} catch (KeyStoreException e)
 		{
-			Assert.assertTrue(e.toString(), e.getMessage().contains("matching"));
+			assertTrue(e.getMessage().contains("matching"));
 		} catch (Exception e)
 		{
-			Assert.fail("Wrong exception " + e.toString());
+			fail("Wrong exception " + e.toString());
 		}
 
 		try
@@ -204,14 +202,14 @@ public class CredentialsTest
 			new PEMCredential(
 				"src/test/resources/ca-v1/usercert.pem",
 				CertificateUtilsTest.KS_P).getKeyStore();
-			Assert.fail("Creation of pem-store credential without pk suceeded");
+			fail("Creation of pem-store credential without pk suceeded");
 		} catch (IOException e)
 		{
-			Assert.assertTrue(e.toString(), e.getMessage().contains("key was not found"));
+			assertTrue(e.getMessage().contains("key was not found"));
 		} catch (Exception e)
 		{
 			e.printStackTrace();
-			Assert.fail("Wrong exception " + e.toString());
+			fail("Wrong exception " + e.toString());
 		}
 	}
 
@@ -224,7 +222,7 @@ public class CredentialsTest
 			new KeystoreCredential("src/test/resources/keystore-1.jks",
 					"wrong".toCharArray(), CertificateUtilsTest.KS_P, 
 					"mykey", "JKS");
-			Assert.fail("Creation of jks credential with wrong ks password suceeded");
+			fail("Creation of jks credential with wrong ks password suceeded");
 		}catch (Exception e)
 		{
 			assertTrue(e.getMessage().contains("password"));
@@ -235,7 +233,7 @@ public class CredentialsTest
 			new KeystoreCredential("src/test/resources/keystore-1.jks",
 					CertificateUtilsTest.KS_P, "wrong".toCharArray(),  
 					"mykey", "JKS");
-			Assert.fail("Creation of ks credential with wrong ks-key password suceeded");
+			fail("Creation of ks credential with wrong ks-key password suceeded");
 		}catch (Exception e)
 		{
 			assertTrue(e.getMessage().contains("password"));
@@ -246,10 +244,10 @@ public class CredentialsTest
 			new KeystoreCredential("src/test/resources/keystore-1.p12",
 					"wrong".toCharArray(), CertificateUtilsTest.KS_P, 
 					"mykey", "PKCS12");
-			Assert.fail("Creation of pkcs12 credential with wrong password suceeded");
+			fail("Creation of pkcs12 credential with wrong password suceeded");
 		} catch (Exception e)
 		{
-			assertTrue(e.toString(), e.getMessage().contains("password"));
+			assertTrue(e.getMessage().contains("password"));
 		}
 		
 		try
@@ -258,7 +256,7 @@ public class CredentialsTest
 				CertificateUtilsTest.PFX + "pk-1.pem", 
 				CertificateUtilsTest.PFX + "cert-1.pem",
 				"wrong".toCharArray());
-			Assert.fail("Creation of pem pair credential with wrong password suceeded");
+			fail("Creation of pem pair credential with wrong password suceeded");
 		}catch (Exception e)
 		{
 			assertTrue(e.getMessage().contains("password"));
@@ -268,7 +266,7 @@ public class CredentialsTest
 		{
 			new PEMCredential(CertificateUtilsTest.PFX + 
 					"keystore-1.pem", "wrong".toCharArray());
-			Assert.fail("Creation of pem-store credential with wrong password suceeded");
+			fail("Creation of pem-store credential with wrong password suceeded");
 		} catch (Exception e)
 		{
 			assertTrue(e.getMessage().contains("password"));
@@ -280,7 +278,7 @@ public class CredentialsTest
 					CertificateUtilsTest.PFX + "pk-1.der", 
 					CertificateUtilsTest.PFX + "cert-1.der",
 					"wrong".toCharArray());
-			Assert.fail("Creation of der credential with wrong password suceeded");
+			fail("Creation of der credential with wrong password suceeded");
 		} catch (Exception e)
 		{
 			assertTrue(e.getMessage().contains("password"));
@@ -342,7 +340,7 @@ public class CredentialsTest
 		try
 		{
 			CertificateHelpers.checkKeysMatching(kp1.getPrivate(), kp2.getPublic());
-			Assert.fail("not matching keys assumed to be not matching: " + kp1.getPublic());
+			fail("not matching keys assumed to be not matching: " + kp1.getPublic());
 		} catch (InvalidKeyException e)
 		{
 			//expected
@@ -350,7 +348,7 @@ public class CredentialsTest
 		try
 		{
 			CertificateHelpers.checkKeysMatching(kp2.getPrivate(), kp1.getPublic());
-			Assert.fail("not matching keys assumed to be matching (2) " + kp1.getPublic());
+			fail("not matching keys assumed to be matching (2) " + kp1.getPublic());
 		} catch (InvalidKeyException e)
 		{
 			//expected
@@ -362,7 +360,7 @@ public class CredentialsTest
 			CertificateHelpers.checkKeysMatching(kp1.getPrivate(), kp1.getPublic());
 		} catch (InvalidKeyException e)
 		{
-			Assert.fail("matching keys assumed to be not matching: " + e.toString());
+			fail("matching keys assumed to be not matching: " + e.toString());
 		}
 	}
 }

@@ -20,10 +20,10 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Predicate;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 import org.apache.commons.io.FileUtils;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import eu.emi.security.authn.x509.CrlCheckingMode;
 import eu.emi.security.authn.x509.OCSPCheckingMode;
@@ -156,7 +156,7 @@ public class TestKSValidators
 		validator1.addValidationListener(l2);
 		validationErrors.set(0);
 		ValidationResult res1 = validator1.validate(toValidate);
-		assertFalse(res1.getErrors().toString(), res1.isValid());
+		assertFalse(res1.isValid());
 		assertEquals(2, validationErrors.get());
 		
 		validator1.removeValidationListener(l1);
@@ -347,7 +347,7 @@ public class TestKSValidators
 			long remaining = deadline - System.nanoTime();
 			StoreNotification notification = remaining <= 0 ? null :
 					notifications.poll(remaining, TimeUnit.NANOSECONDS);
-			assertNotNull("Timed out waiting for a matching store notification", notification);
+			assertNotNull(notification, "Timed out waiting for a matching store notification");
 			if (predicate.test(notification))
 				return notification;
 		}

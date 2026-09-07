@@ -67,21 +67,15 @@
 
 	<dependencies>
 		<dependency>
-			<groupId>junit</groupId>
-			<artifactId>junit</artifactId>
-			<version>4.13.2</version>
+			<groupId>org.junit.jupiter</groupId>
+			<artifactId>junit-jupiter</artifactId>
+			<version>6.1.3</version>
 			<scope>test</scope>
-			<exclusions>
-				<exclusion>
-					<groupId>org.hamcrest</groupId>
-					<artifactId>hamcrest-core</artifactId>
-				</exclusion>
-			</exclusions>
 		</dependency>
 		<dependency>
-			<groupId>org.assertj</groupId>
-			<artifactId>assertj-core</artifactId>
-			<version>3.27.7</version>
+			<groupId>org.junit.platform</groupId>
+			<artifactId>junit-platform-launcher</artifactId>
+			<version>6.1.3</version>
 			<scope>test</scope>
 		</dependency>
 		<dependency>
@@ -91,7 +85,12 @@
 			<scope>test</scope>
 		</dependency>
 
-		
+		<dependency>
+			<groupId>org.assertj</groupId>
+			<artifactId>assertj-core</artifactId>
+			<version>3.27.7</version>
+			<scope>test</scope>
+		</dependency>
 		<dependency>
 			<groupId>org.bouncycastle</groupId>
 			<artifactId>bcpkix-jdk18on</artifactId>
@@ -186,6 +185,7 @@
 					<publishingServerId>central</publishingServerId>
 					<autoPublish>true</autoPublish>
 					<waitUntil>published</waitUntil>
+					<checksums>required</checksums>
 				</configuration>
 			</plugin>
 			
@@ -319,7 +319,7 @@
 		<profile>
 			<id>riskyTests</id>
 			<properties>
-				<includedJunitGroups>eu.emi.security.authn.x509.RiskyIntegrationTests</includedJunitGroups>
+				<includedJunitGroups>RiskyIntegrationTests</includedJunitGroups>
 				<excludedJunitGroups />
 			</properties>
 		</profile>

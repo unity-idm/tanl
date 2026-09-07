@@ -7,7 +7,7 @@ package eu.emi.security.authn.x509.impl;
 import java.util.ArrayList;
 import java.util.List;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 /**
  * This file includes tests from sections 4.13 to 4.16
