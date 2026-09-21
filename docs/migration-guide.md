@@ -12,26 +12,26 @@ loading by default. Configure revocation explicitly when the deployment needs
 behavior other than the defaults:
 
 ```java
-import eu.emi.security.authn.x509.CrlCheckingMode;
-import eu.emi.security.authn.x509.OCSPCheckingMode;
-import eu.emi.security.authn.x509.OCSPParametes;
-import eu.emi.security.authn.x509.RevocationParameters;
-import eu.emi.security.authn.x509.ValidationResult;
-import eu.emi.security.authn.x509.impl.OpensslCertChainValidator;
-import eu.emi.security.authn.x509.impl.ValidatorParams;
+import io.imunity.tanl.x509.CrlCheckingMode;
+import io.imunity.tanl.x509.OCSPCheckingMode;
+import io.imunity.tanl.x509.OCSPParametes;
+import io.imunity.tanl.x509.RevocationParameters;
+import io.imunity.tanl.x509.ValidationResult;
+import impl.io.imunity.tanl.x509.OpensslCertChainValidator;
+import impl.io.imunity.tanl.x509.ValidatorParams;
 
-RevocationParameters revocation = new RevocationParameters(
-        CrlCheckingMode.IF_PRESENT,
-        new OCSPParametes(OCSPCheckingMode.IF_AVAILABLE));
+RevocationParameters revocation = new RevocationParameters(CrlCheckingMode.IF_PRESENT,
+		new OCSPParametes(OCSPCheckingMode.IF_AVAILABLE));
 ValidatorParams parameters = new ValidatorParams(revocation);
 
-OpensslCertChainValidator validator = new OpensslCertChainValidator(
-        "/srv/example/trust", 600_000L, parameters);
-try {
-    ValidationResult result = validator.validate(peerChain);
-    // Handle result as shown below.
-} finally {
-    validator.dispose();
+OpensslCertChainValidator validator = new OpensslCertChainValidator("/srv/example/trust", 600_000L, parameters);
+try{
+ValidationResult result = validator.validate(peerChain);
+// Handle result as shown below.
+}finally{
+		validator.
+
+dispose();
 }
 ```
 
@@ -76,21 +76,21 @@ responders after transport failures:
 ```java
 import java.net.URI;
 
-import eu.emi.security.authn.x509.OCSPResponder;
-import eu.emi.security.authn.x509.RevocationParameters.RevocationCheckingOrder;
+import io.imunity.tanl.x509.OCSPResponder;
+import io.imunity.tanl.x509.RevocationParameters.RevocationCheckingOrder;
 
 OCSPResponder[] responders = {
-    new OCSPResponder(URI.create("https://ocsp.example.test").toURL(),
-            responderSigningCertificate)
-};
-OCSPParametes ocsp = new OCSPParametes(
-        OCSPCheckingMode.IF_AVAILABLE, responders, 300, "/var/cache/example/ocsp");
-ocsp.setPreferLocalResponders(true);
-ocsp.setUseNonce(false);
+		new OCSPResponder(URI.create("https://ocsp.example.test").toURL(), responderSigningCertificate) };
+OCSPParametes ocsp = new OCSPParametes(OCSPCheckingMode.IF_AVAILABLE, responders, 300, "/var/cache/example/ocsp");
+ocsp.
 
-RevocationParameters revocation = new RevocationParameters(
-        CrlCheckingMode.IF_PRESENT, ocsp, false,
-        RevocationCheckingOrder.OCSP_CRL);
+setPreferLocalResponders(true);
+ocsp.
+
+setUseNonce(false);
+
+RevocationParameters revocation = new RevocationParameters(CrlCheckingMode.IF_PRESENT, ocsp, false,
+		RevocationCheckingOrder.OCSP_CRL);
 ```
 
 The OCSP cache TTL is in seconds. A negative value disables memory and disk
@@ -126,22 +126,30 @@ stable code and stage; provider messages are diagnostics and must not be
 parsed:
 
 ```java
-import eu.emi.security.authn.x509.ValidationError;
-import eu.emi.security.authn.x509.ValidationErrorCode;
-import eu.emi.security.authn.x509.ValidationStage;
+import io.imunity.tanl.x509.ValidationError;
+import io.imunity.tanl.x509.ValidationErrorCode;
+import io.imunity.tanl.x509.ValidationStage;
 
 ValidationResult result = validator.validate(peerChain);
-if (!result.isValid()) {
-    ValidationError error = result.getPrimaryError();
+if(!result.
 
-    if (error.getErrorCode() == ValidationErrorCode.CERTIFICATE_EXPIRED) {
-        // Apply the application's stable expired-certificate policy.
-    } else if (error.getStage() == ValidationStage.REVOCATION) {
-        // Treat this as a revocation-stage failure.
-    }
+isValid()){
+ValidationError error = result.getPrimaryError();
 
-    logDiagnostic(error.getProviderMessage(), error.getCause());
-}
+    if(error.
+
+getErrorCode() ==ValidationErrorCode.CERTIFICATE_EXPIRED){
+		// Apply the application's stable expired-certificate policy.
+		}else if(error.
+
+getStage() ==ValidationStage.REVOCATION){
+		// Treat this as a revocation-stage failure.
+		}
+
+logDiagnostic(error.getProviderMessage(),error.
+
+getCause());
+		}
 ```
 
 `getErrors()` remains as an immutable empty-or-single-element compatibility

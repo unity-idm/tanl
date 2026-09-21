@@ -1,0 +1,22 @@
+/*
+ * Copyright (c) 2011-2012 ICM Uniwersytet Warszawski All rights reserved.
+ * See LICENCE.txt file for licensing information.
+ */
+package io.imunity.tanl.x509.helpers.crl;
+
+import java.security.cert.CertStore;
+import java.security.cert.CertStoreSpi;
+
+/**
+ * Provider-less implementation of the CertStore. Is a trivial wrapper
+ * around {@link CertStore}, which provides a real implementation.
+ * 
+ * @author K. Benedyczak
+ */
+public class SimpleCRLStore extends CertStore
+{
+	public SimpleCRLStore(CertStoreSpi storeSpi)
+	{
+		super(storeSpi, null, storeSpi.getClass().getName(), null);
+	}
+}

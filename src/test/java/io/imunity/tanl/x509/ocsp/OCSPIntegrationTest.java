@@ -1,0 +1,75 @@
+/*
+ * Copyright (c) 2012 ICM Uniwersytet Warszawski All rights reserved.
+ * See LICENCE.txt file for licensing information.
+ */
+package io.imunity.tanl.x509.ocsp;
+
+import java.io.FileInputStream;
+import java.net.URI;
+import java.security.cert.X509Certificate;
+
+import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
+
+import io.imunity.tanl.x509.CrlCheckingMode;
+import io.imunity.tanl.x509.OCSPCheckingMode;
+import io.imunity.tanl.x509.OCSPParametes;
+import io.imunity.tanl.x509.OCSPResponder;
+import io.imunity.tanl.x509.impl.CertificateUtils;
+import io.imunity.tanl.x509.impl.CertificateUtils.Encoding;
+import io.imunity.tanl.x509.impl.NISTValidatorTestBase;
+
+
+/**
+ * Performs a high-level OCSP test. In fact should be little bit extended to test also a case when OCSP responder 
+ * returns 'revoked'. Actually we test OCSP URL extraction, successful test, and negative test when a defined OCSP
+ * responder returns an error. 
+ * 
+ * @author K. Benedyczak
+ */
+public class OCSPIntegrationTest extends NISTValidatorTestBase
+{
+	@Test
+	@Tag("RiskyIntegrationTests")
+	@Disabled
+	public void test() throws Exception
+	{
+		String responder = "http://sr.symcd.com";
+		String certToCheck = "src/test/resources/ocsp/mbank.pem";
+		String trustedCa = "src/test/resources/ocsp/SymantecClass3EVSSLCA-G3.pem";
+		
+		X509Certificate toCheck = CertificateUtils.loadCertificate(new FileInputStream(certToCheck), 
+				Encoding.PEM);
+		X509Certificate responderCert = CertificateUtils.loadCertificate(new FileInputStream(trustedCa), 
+				Encoding.PEM);
+		
+		OCSPParametes ocspParams;
+
+		ocspParams = new OCSPParametes(OCSPCheckingMode.REQUIRE, new OCSPResponder(
+				URI.create(responder).toURL(), responderCert));
+		
+		doPathTest(0, "src/test/resources/ocsp/", new String[] {"SymantecClass3EVSSLCA-G3"}, 
+				".pem", "", new String[] {}, "",
+				new X509Certificate[] {toCheck}, null,
+				CrlCheckingMode.IGNORE, ocspParams);
+		
+		ocspParams = new OCSPParametes(OCSPCheckingMode.REQUIRE);
+		doPathTest(0, "src/test/resources/ocsp/", new String[] {"SymantecClass3EVSSLCA-G3"}, 
+				".pem", "", new String[] {}, "",
+				new X509Certificate[] {toCheck}, null,
+				CrlCheckingMode.IGNORE, ocspParams);
+
+		ocspParams = new OCSPParametes(OCSPCheckingMode.REQUIRE);		
+		nistTest(2, TRUST_ANCHOR_ROOT_CERTIFICATE, 
+		                new String[] { "ValidCertificatePathTest1EE", GOOD_CA_CERT}, 
+		                new String[] { GOOD_CA_CRL, TRUST_ANCHOR_ROOT_CRL }, null, ocspParams);
+
+		ocspParams = new OCSPParametes(OCSPCheckingMode.REQUIRE, new OCSPResponder(
+				URI.create(responder).toURL(), responderCert));
+		nistTest(2, TRUST_ANCHOR_ROOT_CERTIFICATE, 
+		                new String[] { "ValidCertificatePathTest1EE", GOOD_CA_CERT}, 
+		                new String[] { GOOD_CA_CRL, TRUST_ANCHOR_ROOT_CRL }, null, ocspParams);
+		
+	}
+}

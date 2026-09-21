@@ -1,0 +1,42 @@
+/*
+ * Copyright (c) 2026 Bixbit - Krzysztof Benedyczak. All rights reserved.
+ * See LICENSE.txt for licensing information.
+ */
+package io.imunity.tanl.x509;
+
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.sameInstance;
+
+import org.junit.jupiter.api.Test;
+
+import io.imunity.tanl.x509.RevocationParameters.RevocationCheckingOrder;
+
+public class RevocationParametersTest
+{
+	@Test
+	public void shouldUseNamedOptionalModesByDefault()
+	{
+		RevocationParameters defaults = new RevocationParameters();
+
+		assertThat(defaults.getCrlCheckingMode(), is(CrlCheckingMode.IF_PRESENT));
+		assertThat(defaults.getOcspParameters().getCheckingMode(),
+				is(OCSPCheckingMode.IF_AVAILABLE));
+	}
+
+	@Test
+	public void shouldPreserveOverallPolicyWhenCloned()
+	{
+		OCSPParametes ocsp = new OCSPParametes(OCSPCheckingMode.REQUIRE);
+		RevocationParameters original = new RevocationParameters(
+				CrlCheckingMode.REQUIRE, ocsp, true,
+				RevocationCheckingOrder.CRL_OCSP);
+
+		RevocationParameters cloned = original.clone();
+
+		assertThat(cloned.getCrlCheckingMode(), is(CrlCheckingMode.REQUIRE));
+		assertThat(cloned.getOcspParameters(), sameInstance(ocsp));
+		assertThat(cloned.isUseAllEnabled(), is(true));
+		assertThat(cloned.getOrder(), is(RevocationCheckingOrder.CRL_OCSP));
+	}
+}

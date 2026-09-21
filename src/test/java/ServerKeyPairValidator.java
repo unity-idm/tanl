@@ -1,15 +1,15 @@
 import java.security.cert.X509Certificate;
 
-import eu.emi.security.authn.x509.CrlCheckingMode;
-import eu.emi.security.authn.x509.OCSPCheckingMode;
-import eu.emi.security.authn.x509.OCSPParametes;
-import eu.emi.security.authn.x509.RevocationParameters;
-import eu.emi.security.authn.x509.ValidationError;
-import eu.emi.security.authn.x509.ValidationResult;
-import eu.emi.security.authn.x509.X509CertChainValidator;
-import eu.emi.security.authn.x509.impl.OpensslCertChainValidator;
-import eu.emi.security.authn.x509.impl.PEMCredential;
-import eu.emi.security.authn.x509.impl.ValidatorParams;
+import io.imunity.tanl.x509.CrlCheckingMode;
+import io.imunity.tanl.x509.OCSPCheckingMode;
+import io.imunity.tanl.x509.OCSPParametes;
+import io.imunity.tanl.x509.RevocationParameters;
+import io.imunity.tanl.x509.ValidationError;
+import io.imunity.tanl.x509.ValidationResult;
+import io.imunity.tanl.x509.X509CertChainValidator;
+import io.imunity.tanl.x509.impl.OpensslCertChainValidator;
+import io.imunity.tanl.x509.impl.PEMCredential;
+import io.imunity.tanl.x509.impl.ValidatorParams;
 
 /**
  * Validates that a server private key and certificate are:

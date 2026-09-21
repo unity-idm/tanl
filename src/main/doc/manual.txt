@@ -37,7 +37,7 @@ Library user's guide
 _(aka Software Design Description)_
 
 The library classes can be found in variety of packages. All packages whose names
-start with +eu.emi.security.authn.x509.helpers+ are considered an internal 
+start with +io.imunity.tanl.x509.helpers+ are considered an internal
 implementation. You can freely use them, but documentation might be less detailed and
 it is not guaranteed that the API won't change in future versions of the library. 
 All classes in the remaining packages form the public, official API, which is intended 
@@ -50,7 +50,7 @@ To understand how the library works it is necessary to be familiar with a few co
 *Credentials*::
 Credentails are objects providing access to the real X.509 PKI identity information about an
 entity, i.e. its private key and certificate. Credentials are implementing the  
-+eu.emi.{zwsp}security.authn.x509.X509Credential+ interface. Credential objects are used in the first place 
++io.imunity.tanl.x509.X509Credential+ interface. Credential objects are used in the first place
 to convert underlying credential representation to a format usable by the Java code, e.g. to create
 an SSL socket.
 
@@ -61,20 +61,20 @@ trusted Certificate Authorities (CAs). The set of trust anchors is called a trus
 are tightly bound to the underlying trust stores and in fact the trust stores are usually the only
 difference between validators. However users of this library are using only the simple interface of
 validator, while underlying trust store is hidden. Validators are implementing the 
-+eu.emi.security.authn.x509.X509CertChainValidator+ interface. For example a concrete validator 
++io.imunity.tanl.x509.X509CertChainValidator+ interface. For example a concrete validator
 can use OpenSSL-style directory with certificates or a Java JKS file. Validators are used either directly
 to perform an off-line certificate chain validation or indirectly in SSL sockets to check peer certificates.
 
 *Creation of SSL sockets*::
 To make creation of SSL sockets easy there is a convenience class 
-+eu.emi.security{zwsp}.authn.x509.impl.SocketFactoryCreator2+ which provides methods creating SSL server and
++io.imunity.tanl.x509.impl.SocketFactoryCreator2+ which provides methods creating SSL server and
 client socket factories. Factory is created from credential and validator instances.
 
 *Utilities*::
 There are also additional utilities in this library. It is important to note the following ones:
-+eu.emi.security.authn.x509.impl.X500NameUtils+ provides methods to 
++impl.io.imunity.tanl.x509.X500NameUtils+ provides methods to
 compare and print string representations of 
-distinguished names; +eu.emi.security.{zwsp}authn.x509.impl.CertificateUtils+ 
+distinguished names; +io.imunity.tanl.x509.impl.CertificateUtils+
 allows for loading and saving credentials and to pretty-print certificate chains.
 
 
@@ -123,7 +123,7 @@ Another important issue related to DNs is their comparison. Attention must be pa
 not to compare text representations using literal string comparison. What is more,
 comparison using the standard JDK +javax.security.auth.x500.X500Principal#equals(Object)+
 method also can produce undesired results. *Therefore is is strongly suggested to use the 
-+eu.emi.{zwsp}security.authn.x509.impl.X500NameUtils+
++io.imunity.tanl.x509.impl.X500NameUtils+
 class from this library to compare DNs whenever at least one of them is provided
 in the text format.*
 
@@ -245,8 +245,8 @@ Advanced topics
 
 Low level validation API
 ^^^^^^^^^^^^^^^^^^^^^^^^
-Each +eu.emi.security.authn.x509.X509CertChainValidator+ implementation offers
-possibility to register a +eu.emi.security.authn.x509.ValidationErrorListener+.
+Each +io.imunity.tanl.x509.X509CertChainValidator+ implementation offers
+possibility to register a +io.imunity.tanl.x509.ValidationErrorListener+.
 Implementations of this listener are notified about each validation error found during 
 validation. Typically the implementation can report the problem to the user, what is 
 particularly useful when certificate validation is invoked indirectly (e.g. on SSL
