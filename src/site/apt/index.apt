@@ -1,11 +1,11 @@
    ------
-Common X.509 Authentication Library - Java API
+TLS X.509 Authentication Library - Java API
    ------
    
-Common X.509 Authentication Library - Java API
+TLS X.509 Authentication Library - Java API
 
   
-	The Common Authentication Library provides foundation code for establishing secure
+	The TLS Authentication Library provides foundation code for establishing secure
 SSL/TLS connections and validating certificate chains.
 
 	The library manual, including the functional description, programmer's guide, and

@@ -7,7 +7,7 @@
 	<version>0.0.3-SNAPSHOT</version>
 	<name>tanl</name>
 
-	<description>Common X.509 Authentication Library</description>
+	<description>TLS X.509 Authentication Library</description>
 	<inceptionYear>2012</inceptionYear>
 	<organization>
 		<name>Unity Identity Management</name>
@@ -32,8 +32,8 @@
 	<developers>
 		<developer>
 			<name>Krzysztof Benedyczak</name>
-			<organization>ICM Warsaw University</organization>
-			<organizationUrl>http://www.icm.edu.pl</organizationUrl>
+			<organization>Unity IdM</organization>
+			<organizationUrl>https://unity-idm.eu</organizationUrl>
 		</developer>
 	</developers>
 

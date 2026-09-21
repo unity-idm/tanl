@@ -1,10 +1,10 @@
-Common Authentication Library Manual
+TLS Authentication Library Manual
 ====================================
-Krzysztof Benedyczak <golbi a-t icm.edu.pl>
+Krzysztof Benedyczak <kb a-t unity-idm.eu>
 :revnumber: 1.0.1
 :numbered:
 
-Welcome to the documentation of the Common X.509 Authentication Library for Java.
+Welcome to the documentation of the TLS X.509 Authentication Library for Java.
 
 This library supports authentication and other X.509 PKI operations in Java applications.
 This document provides an overview and introductory material. It should be read accompanied
@@ -14,7 +14,7 @@ web page.
 Functional Description
 ----------------------
 
-The Common X.509 Authentication Library provides support for:
+The TLS X.509 Authentication Library provides support for:
 
 * off-line certificate validation,
 * creation of SSL sockets (both server and client side),
