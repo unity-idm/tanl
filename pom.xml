@@ -19,7 +19,7 @@
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 		<maven.compiler.release>17</maven.compiler.release>
 		<excludedJunitGroups>eu.emi.security.authn.x509.RiskyIntegrationTests</excludedJunitGroups>
-		<bouncycastle.version>1.85</bouncycastle.version>
+		<bouncycastle.version>1.86</bouncycastle.version>
 	</properties>
 
 
